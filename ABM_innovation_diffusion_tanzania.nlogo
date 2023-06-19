@@ -75,6 +75,11 @@ globals [
   research_team_agent ;; research team variable for direct access
   average_farmer_dummy ;; dummy farmer of whom all values are average
 
+  villages_per_neighborhood ;; calculated number of villages in one neighborhood (upper)
+  start_counter ;; start of sublist
+  end_counter ;; end of sublist
+  counter
+  neighborhood_list ;; list for keeping track of villages in one neighborhood (temp)
 
   ;; -----------------------------------------
   ;; simulation parameters
@@ -121,6 +126,7 @@ turtles-own [
 
 
   ref_village_id
+  ref_neighborhood_id
 
 
 ]
@@ -135,6 +141,7 @@ chiefs-own [
 patches-own [
 
   village_id
+  neighborhood_id
 
 ]
 
@@ -163,6 +170,7 @@ to setup
 
   ;; agents and links
   grow-villages
+  grow-neighborhoods
   create_villages
 
   init-research-team
@@ -251,8 +259,8 @@ to init_agents_general
   ]
 
   ask farmers [
-    set color white
-    set shape "person farmer"
+    set color black
+    set shape "dot" ;;"person farmer"
   ]
 
   ask researchers [
@@ -329,11 +337,10 @@ to link_farmers_inter_village
 
   ask turtles with [breed != researchers] [
 
-    let friends at-most-n-of my_remaining_inter_vill_link_nr other turtles with [
+    let friends at-most-n-of-more-from-same-neighborhood my_remaining_inter_vill_link_nr other turtles with [ ;;TODO: make it more likely to befriend someone from same neighborhood
       breed != researchers and
       ref_village_id != [ref_village_id] of myself and
-        my_remaining_inter_vill_link_nr > 0 ]
-
+        my_remaining_inter_vill_link_nr > 0 ] ref_neighborhood_id
 
     if friends != nobody [
         create-inter_village_friends-with friends
@@ -341,6 +348,35 @@ to link_farmers_inter_village
         set my_remaining_inter_vill_link_nr (my_remaining_inter_vill_link_nr - count friends)
     ]
 ]
+end
+
+to grow-neighborhoods
+   ask patches [
+    set neighborhood_id -1 ;; set all neighborhood ids to -1 to keep track of mistakes
+  ]
+
+  if nr_of_neighborhoods != 0 [ ;; only do this if there are more than 0 neighborhoods
+
+    set villages_per_neighborhood (nr_of_villages / nr_of_neighborhoods)
+    set start_counter 0
+    set end_counter (round villages_per_neighborhood)
+    set counter 0
+
+    loop [ ;; loop for every neighborhood
+      if counter = nr_of_neighborhoods [ stop ] ;; stop if we have set number of neighborhoods
+      if start_counter > nr_of_villages [ stop ] ;; stop if we reach end of list
+      set counter (counter + 1)
+      if end_counter >= (length all_village_ids) [ set end_counter (length all_village_ids) ] ;; reset end counter if it is larger than length of list
+      set neighborhood_list sublist all_village_ids start_counter end_counter ;; define sublist of villages belonging to new neighborhood ;; end counter is not included
+      ask patches with [ member? village_id neighborhood_list ] [ ;; all patches of villages which are in the sublist
+        set neighborhood_id counter + 1 ;; set neighborhood id
+      ]
+
+      ;; update start and end counter
+      set start_counter (start_counter + round villages_per_neighborhood)
+      set end_counter (end_counter + round villages_per_neighborhood)
+    ]
+  ]
 end
 
 ;; generates the defined number of villages in a random fashion
@@ -420,9 +456,12 @@ to create_villages
   foreach all_village_ids [
     x -> let coord (find_middle_of_village x)
 
+    let cur_patch one-of patches with [village_id = x ] ;; get one of the patches in the village in order to set the neighborhood_id of the chief correctly
+
     create-chiefs 1 [
       setxy (item 0 coord) (item 1 coord)
       set ref_village_id x
+      set ref_neighborhood_id ([neighborhood_id] of cur_patch) ;; set neighborhood_id by taking it from one of the patches from the village
     ]
 
     let cur_chief chiefs with [xcor = (item 0 coord) and ycor = (item 1 coord)]
@@ -452,6 +491,7 @@ to add_farmer_to_village [vill_id this_chief]
     create-farmers 1 [
       create-members-with this_chief
       set ref_village_id ([ref_village_id] of one-of this_chief)
+      set ref_neighborhood_id ([ref_neighborhood_id] of one-of this_chief)
       move-to selected_empty_patch
     ]
   ]
@@ -1049,8 +1089,6 @@ end
 ;; ----------------------------------------------------------------------------------------------------------------------------------------------------------
 ;; helper
 
-
-
 to-report choose_boolean_with_probability [probability_true]
   let items [ true false ]
   let weights list probability_true (1 - probability_true)
@@ -1088,6 +1126,32 @@ to-report at-most-n-of-list [ n lst ]
   ] [
     report lst
   ]
+end
+
+;; returns agentset containing n agents of given agentset
+;; returned agentset contains more agents from given neighborhood_id than not
+to-report at-most-n-of-more-from-same-neighborhood [ n agentset id ]
+
+  ;; create two agentsets from input agentset: one containing all agents from same neighborhood and one with all other agents
+  let same_neighborhood_friends agentset with [ ref_neighborhood_id = [ref_neighborhood_id] of myself ]
+  let different_neighborhood_friends agentset with [ ref_neighborhood_id != [ref_neighborhood_id] of myself ]
+
+  ;; 80% of friends are from same neighborhood
+  let num_friends_same_neighborhood ceiling n * 0.8
+  let num_friends_different_neighborhood n - num_friends_same_neighborhood
+
+  ;; take number of friends from corresponding agentsets ;; if agentset is smaller than n, take whole agentset
+  if count same_neighborhood_friends > num_friends_same_neighborhood [
+    set same_neighborhood_friends n-of num_friends_same_neighborhood same_neighborhood_friends
+  ]
+
+  if count different_neighborhood_friends > num_friends_different_neighborhood [
+    set different_neighborhood_friends n-of num_friends_different_neighborhood different_neighborhood_friends
+  ]
+
+  ;; return combined agentset of friends
+  let combined_friends (turtle-set same_neighborhood_friends different_neighborhood_friends)
+  report combined_friends
 end
 
 to-report truncate_value [value maxVal minVal]
@@ -1290,10 +1354,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-1483
-254
-1736
-287
+1480
+282
+1733
+315
 avg_mention_percentage
 avg_mention_percentage
 0
@@ -1322,10 +1386,10 @@ NIL
 1
 
 SLIDER
-1483
-389
-1738
-422
+1480
+417
+1735
+450
 avg_inter_village_interaction_frequency
 avg_inter_village_interaction_frequency
 1
@@ -1337,10 +1401,10 @@ days
 HORIZONTAL
 
 SLIDER
-1483
-350
-1737
-383
+1480
+378
+1734
+411
 avg_intra_village_interaction_frequency
 avg_intra_village_interaction_frequency
 1
@@ -1352,10 +1416,10 @@ days
 HORIZONTAL
 
 SLIDER
-1483
-429
-1739
-462
+1480
+457
+1736
+490
 avg_chief_farmer_meeting_frequency
 avg_chief_farmer_meeting_frequency
 1
@@ -1421,10 +1485,10 @@ NIL
 1
 
 SWITCH
-1483
-609
-1708
-642
+1480
+637
+1705
+670
 is_visible_update_activated
 is_visible_update_activated
 1
@@ -1449,10 +1513,10 @@ NIL
 1
 
 SWITCH
-1482
-647
-1709
-680
+1479
+675
+1706
+708
 check_finished_condition
 check_finished_condition
 1
@@ -1460,10 +1524,10 @@ check_finished_condition
 -1000
 
 SLIDER
-1483
-294
-1737
-327
+1480
+322
+1734
+355
 percentage_negative_WoM
 percentage_negative_WoM
 0
@@ -1504,10 +1568,10 @@ run_until_day_x
 Number
 
 SLIDER
-1483
-481
-1741
-514
+1480
+509
+1738
+542
 base_adoption_probability
 base_adoption_probability
 0.1
@@ -1597,24 +1661,39 @@ NIL
 HORIZONTAL
 
 TEXTBOX
-1487
-219
-1678
-257
+1484
+247
+1675
+285
 Simulation Parameter
 15
 0.0
 1
 
 TEXTBOX
-1486
-575
-1636
-594
+1483
+603
+1633
+622
 UI Settings
 15
 0.0
 1
+
+SLIDER
+1480
+182
+1689
+215
+nr_of_neighborhoods
+nr_of_neighborhoods
+0
+nr_of_villages
+20.0
+1
+1
+NIL
+HORIZONTAL
 
 @#$#@#$#@
 ## Agent-based Model of Innovation Diffusion among Smallholder Farmer Households
