@@ -18,7 +18,6 @@ globals [
   ;; -----------------------------------------
   ;; parameters influencing mentioning percentage
 
-  max_influence_adopter_type_on_mention              ;; defines max influence of topic mention during interaction of adopter type of participants
   max_influence_prev_interactions_on_mention         ;; defines max influence of topic mention during interaction of previous interactions of participants
   max_influence_adoption_state_on_mention            ;; defines max influence of topic mention during interaction of adoption state of participants
   optimal_nr_of_interactions_for_mention             ;; defines optimal value of previous interaction that the topic is mentioned
@@ -30,7 +29,7 @@ globals [
   ;; parameters affecting adoption-decision
 
   avg_check_adoption_interval                       ;; defines the interval in which every farmer checks whether he wants to adopt or not
-  max_influence_adopter_type_on_adoption            ;; defines how heavilgy adoption decision is influenced by adopter type of farmer
+  max_influence_risk_aversion_on_adoption           ;; defines how heavilgy adoption decision is influenced by the risk aversion of farmer
   max_influence_attitude_on_adoption                ;; defines how heavily adoption decision is influenced by attitude of the farmer
   max_influence_adopter_friends_on_adoption         ;; defines how heavilty the adoption decision is influenced by the amoung of friends/neighbors already adopted
 
@@ -43,7 +42,7 @@ globals [
   chief_influence                                   ;; defines the influence of a chief during a farmgroup meeting
 
   max_influence_adopter_counterpart_on_attitude     ;; defines influence of a farmer which already adopted to another one
-  max_influence_adopter_type_on_attitude            ;; defines the influence of the adopter type on the attitude change during an interaction
+  max_influence_risk_aversion_on_attitude           ;; defines the influence of the risk aversion on the attitude change during an interaction
   base_attitude_change                              ;; defines by what value the attitude is changed during an interaction
 
 
@@ -107,7 +106,7 @@ turtles-own [
   my_remaining_inter_vill_link_nr
 
   ;; adoption variable
-  adopter_type ;; 1=innovator, 2=early adopter, 3=early majority, 4=late majority, 5=laggards
+  risk_aversion ;; 1=risk-seeking - 5=risk-averse
   adoption_state ;; 0=not aware of innovation, 1=consideration, 2=adopter
   next_adoption_decision_tick_nr ;; states the tick nr of this agent when he decides about adopting again
   innovation_adoption_attitude ;; defines the attitude of the agent towards the innovation (can be positive or negative; declines over time by attitude_decrease_per_tick)
@@ -190,7 +189,6 @@ end
 to init_parameters
   set farmgroup_meeting_attendance_percentage 90 ;; in %
 
-  set max_influence_adopter_type_on_mention 25 ;; in %
   set max_influence_prev_interactions_on_mention 20 ;; in %
   set max_influence_adoption_state_on_mention 10 ;; in %
   set optimal_nr_of_interactions_for_mention 10
@@ -202,7 +200,7 @@ to init_parameters
   set base_influence_counterpart 100 ;; in %
   set chief_influence 175 ;; in %
   set max_influence_adopter_counterpart_on_attitude 20 ;; in %
-  set max_influence_adopter_type_on_attitude 25 ;; in %
+  set max_influence_risk_aversion_on_attitude 25 ;; in %
 
 
   set direct_ad_influence 150 ;; in %
@@ -210,7 +208,7 @@ to init_parameters
 
 
   set avg_check_adoption_interval 5
-  set max_influence_adopter_type_on_adoption  10 ;; in %
+  set max_influence_risk_aversion_on_adoption  10 ;; in %
   set max_influence_attitude_on_adoption 50 ;; in %
   set max_influence_adopter_friends_on_adoption 20 ;; in %
 
@@ -234,12 +232,12 @@ to init-research-team
   set research_team_agent one-of researchers
 
   create-researchers 1 [
-    set adopter_type 3
+    set risk_aversion 3
     set adoption_state 0
     set nr_topic_related_interactions 0
   ]
 
-  set average_farmer_dummy one-of researchers with [adopter_type = 3]
+  set average_farmer_dummy one-of researchers with [risk_aversion = 3]
 end
 
 ;; inititalizes the general properties of the agents
@@ -268,12 +266,12 @@ to init_agents_general
     set next_adoption_decision_tick_nr 0
     set next_inter_village_interaction_tick_nr calc_next_inter_village_interaction
     set next_intra_village_interaction_tick_nr calc_next_intra_village_interaction
-    set adopter_type get_adopter_type
+    set risk_aversion get_risk_aversion
   ]
 end
 
-;; returns an adopter type according Roger's probability
-to-report get_adopter_type
+;; returns the risk aversion (the weights are currently still based on Roger's probability of adopter types) ;; TODO: mit korrekten Daten ersetzen sobald vorhanden
+to-report get_risk_aversion
   let items [ 1 2 3 4 5 ]
   let weights (list 0.025 0.135 0.34 0.34 0.16)
   report (choose_with_probability items weights)
@@ -720,10 +718,6 @@ to-report calc_mention_topic_probability [ participant1 participant2 bforceMenti
     report 0
   ]
 
-  ;; calculate influence of adopter types
-  ;; compare adopter types, the smaller the average of both, the likelier they talk about the innovation
-  let adopter_type_influence (calc_adopter_type_influence_on_mention ((([adopter_type] of participant1 ) + ([adopter_type] of participant2)) / 2))
-
   ;; calculate influence of previous interaction
   let prev_topic_interactions_influence (calc_prev_interaction_influence_on_mention participant1 participant2)
 
@@ -732,26 +726,12 @@ to-report calc_mention_topic_probability [ participant1 participant2 bforceMenti
 
   ;; calc final interaction probability
   let final_interaction_probability (avg_mention_percentage / 100)
-  set final_interaction_probability (final_interaction_probability + (adopter_type_influence * (avg_mention_percentage / 100))) ;; influence of adopter type
   set final_interaction_probability (final_interaction_probability + (prev_topic_interactions_influence * (avg_mention_percentage / 100))) ;; influence of previous interaction
   set final_interaction_probability (final_interaction_probability + (adopter_interaction_influence * (avg_mention_percentage / 100))) ;; influence of adoption phase
 
   ;; percentage between 0 and 1
   set final_interaction_probability truncate_value final_interaction_probability 1 0
   report final_interaction_probability
-end
-
-
-
-to-report calc_adopter_type_influence_on_mention [n_adopter_type]
-  ;; arbitrarly defined values based on adopter type curve
-  let influence (ifelse-value
-  n_adopter_type <= 1.5 [max_influence_adopter_type_on_mention]
-  n_adopter_type <= 2.5 [max_influence_adopter_type_on_mention * 0.5]
-  n_adopter_type <= 3.5 [max_influence_adopter_type_on_mention * 0.2]
-  n_adopter_type <= 4.5 [max_influence_adopter_type_on_mention * -0.5]
-  [max_influence_adopter_type_on_mention * -1])
-  report influence / 100
 end
 
 to-report calc_prev_interaction_influence_on_mention [participant1 participant2]
@@ -817,8 +797,8 @@ to update_attitude_single_agent [agent b_update_this_agent other_agent other_age
     ;; attitude change is influenced by type of adopter, influence of other agent, whether other agent already adopted innovation
     ;; -----------
 
-    ;; adopter type influence (laggers tend to accept negative information more than positiv and vice versa for innovators)
-    let adopter_type_influence (calc_adopter_type_influence_on_attitude [adopter_type] of agent b_is_negative_wom)
+    ;; risk aversion influence (risk averse farmers tend to accept negative information more than positive and vice versa for risk seeking farmers)
+    let risk_aversion_influence (calc_risk_aversion_influence_on_attitude [risk_aversion] of agent b_is_negative_wom)
 
 
     ;; adoption state influence - if other agent is adopter, his opinion is more valuable
@@ -827,7 +807,7 @@ to update_attitude_single_agent [agent b_update_this_agent other_agent other_age
 
     ;; change attitude change
     set final_attitude_change (final_attitude_change * (other_agent_influence / 100)) ;; influence of counterpart (a.k.a. trustworthiness)
-    set final_attitude_change (final_attitude_change + adopter_type_influence) ;; influence of adopter type
+    set final_attitude_change (final_attitude_change + risk_aversion_influence) ;; influence of risk aversion
     set final_attitude_change (final_attitude_change + adoption_state_influence) ;; influence of adoption state
     set final_attitude_change (final_attitude_change * (ifelse-value (b_is_negative_wom) [-1] [1])) ;; influence of negative WoM (negate)
 
@@ -855,26 +835,26 @@ to-report calc_adopter_influence_on_attitude [other_agent]
   report 0
 end
 
-to-report calc_adopter_type_influence_on_attitude [input_adopter_type b_is_negative_wom]
-  let type_influence 0
+to-report calc_risk_aversion_influence_on_attitude [input_risk_aversion b_is_negative_wom]
+  let risk_aversion_influence 0
   ifelse b_is_negative_wom [
-      set type_influence (ifelse-value
-        input_adopter_type = 1 [ max_influence_adopter_type_on_attitude * -1 ]
-        input_adopter_type = 2 [ max_influence_adopter_type_on_attitude * -0.5]
-        input_adopter_type = 3 [ max_influence_adopter_type_on_attitude * -0.2]
-        input_adopter_type = 4 [ max_influence_adopter_type_on_attitude * 0.5 ]
-        input_adopter_type = 5 [ max_influence_adopter_type_on_attitude ]
+      set risk_aversion_influence (ifelse-value
+        input_risk_aversion = 1 [ max_influence_risk_aversion_on_attitude * -1 ]
+        input_risk_aversion = 2 [ max_influence_risk_aversion_on_attitude * -0.5]
+        input_risk_aversion = 3 [ max_influence_risk_aversion_on_attitude * -0.2]
+        input_risk_aversion = 4 [ max_influence_risk_aversion_on_attitude * 0.5 ]
+        input_risk_aversion = 5 [ max_influence_risk_aversion_on_attitude ]
       )
     ] [
-      set type_influence (ifelse-value
-        input_adopter_type = 1 [ max_influence_adopter_type_on_attitude ]
-        input_adopter_type = 2 [ max_influence_adopter_type_on_attitude * 0.5 ]
-        input_adopter_type = 3 [ max_influence_adopter_type_on_attitude * 0.2 ]
-        input_adopter_type = 4 [ max_influence_adopter_type_on_attitude * -0.5 ]
-        input_adopter_type = 5 [ max_influence_adopter_type_on_attitude * -1 ])
+      set risk_aversion_influence (ifelse-value
+        input_risk_aversion = 1 [ max_influence_risk_aversion_on_attitude ]
+        input_risk_aversion = 2 [ max_influence_risk_aversion_on_attitude * 0.5 ]
+        input_risk_aversion = 3 [ max_influence_risk_aversion_on_attitude * 0.2 ]
+        input_risk_aversion = 4 [ max_influence_risk_aversion_on_attitude * -0.5 ]
+        input_risk_aversion = 5 [ max_influence_risk_aversion_on_attitude * -1 ])
     ]
 
-  report type_influence / 100
+  report risk_aversion_influence / 100
 end
 
 to update_village_visuals
@@ -902,7 +882,7 @@ to check_adoption
       ;; decision is based on base_adoption_percentage, own attitude, own adopter_type and adoption rate of friends/neighbors)
       let final_probability base_adoption_probability / 100
 
-      set final_probability (final_probability + (calc_adopter_type_influence_on_decision self * (base_adoption_probability / 100))) ;; influence of adopter type
+      set final_probability (final_probability + (calc_risk_aversion_influence_on_decision self * (base_adoption_probability / 100))) ;; influence of risk aversion
       set final_probability (final_probability + (calc_adopter_friends_influence_on_decision self * (base_adoption_probability / 100))) ;; influence of adoption rate of friends
       set final_probability (final_probability + (calc_attitude_influence_on_decision self * (base_adoption_probability / 100))) ;; influence of attitude towards innovation
 
@@ -921,15 +901,15 @@ to check_adoption
   ]
 end
 
-to-report calc_adopter_type_influence_on_decision [agent]
+to-report calc_risk_aversion_influence_on_decision [agent]
   ;; arbitrarly defined values based on adopter type curve
-  let temp_adopter_type [adopter_type] of agent
+  let temp_risk_aversion [risk_aversion] of agent
   let influence (ifelse-value
-  temp_adopter_type = 1 [max_influence_adopter_type_on_adoption]
-  temp_adopter_type = 2 [max_influence_adopter_type_on_adoption * 0.5]
-  temp_adopter_type = 3 [max_influence_adopter_type_on_adoption * 0.2]
-  temp_adopter_type = 4 [max_influence_adopter_type_on_adoption * -0.5]
-  temp_adopter_type = 5 [max_influence_adopter_type_on_adoption * -1])
+  temp_risk_aversion = 1 [max_influence_risk_aversion_on_adoption]
+  temp_risk_aversion = 2 [max_influence_risk_aversion_on_adoption * 0.5]
+  temp_risk_aversion = 3 [max_influence_risk_aversion_on_adoption * 0.2]
+  temp_risk_aversion = 4 [max_influence_risk_aversion_on_adoption * -0.5]
+  temp_risk_aversion = 5 [max_influence_risk_aversion_on_adoption * -1])
   report influence / 100
 end
 
