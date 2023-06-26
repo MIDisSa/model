@@ -548,7 +548,7 @@ to prepare_agents_for_interaction
 
     ;; decrease attitude if no interactions happen
     if not b_interacts_this_tick [
-      set innovation_adoption_attitude ( max list (innovation_adoption_attitude - attitude_decrease_per_tick) 0)
+      if innovation_adoption_attitude > 0 [set innovation_adoption_attitude ( max list (innovation_adoption_attitude - attitude_decrease_per_tick) 0)]
     ]
  ]
 end
