@@ -2071,8 +2071,7 @@ NetLogo 6.2.2
   </experiment>
   <experiment name="experiment" repetitions="10" runMetricsEveryStep="true">
     <setup>reset_simulation</setup>
-    <go>go
-direct_village_intervention</go>
+    <go>go</go>
     <timeLimit steps="365"/>
     <metric>nr_of_adopters</metric>
     <metric>nr_of_considerers</metric>
