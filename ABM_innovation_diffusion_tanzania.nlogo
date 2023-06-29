@@ -1282,8 +1282,8 @@ SLIDER
 nr_default_friends_inter_village
 nr_default_friends_inter_village
 1
-10
-5.0
+20
+13.0
 1
 1
 NIL
