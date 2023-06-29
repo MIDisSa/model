@@ -624,8 +624,8 @@ to chief-farmer-meeting-interaction
       set nr_total_interactions (nr_total_interactions + 1)
 
       ;; calculate if chief mentions the innovation in current meeting
-      let mention_topic_prop (calc_mention_topic_probability self average_farmer_dummy false)
-      set mention_topic_prop (mention_topic_prop * (farmgroup_meeting_mention_probability / avg_mention_percentage )) ;; multply result by ratio between probabilities
+      let mention_topic_prop (calc_mention_topic_probability self average_farmer_dummy false "farmgroup_meeting")
+      set mention_topic_prop (mention_topic_prop * (farmgroup_meeting_mention_probability / avg_meeting_mention_percentage )) ;; multply result by ratio between probabilities
 
       let mention_innovation choose_boolean_with_probability mention_topic_prop
 
@@ -694,7 +694,14 @@ end
 
 ;; calculates whether the topic is talked about in current interaction
 to-report calc_mention_topic [ participant1 participant2 bforceMention ]
-  let final_interaction_probability (calc_mention_topic_probability participant1 participant2 bforceMention)
+
+  ;; check if inter or intra interaction
+  let interaction_type ""
+  ifelse [ref_village_id] of participant1 = [ref_village_id] of participant2
+  [set interaction_type "intra"]
+  [set interaction_type "inter"]
+
+  let final_interaction_probability (calc_mention_topic_probability participant1 participant2 bforceMention interaction_type)
 
   let btalk (choose_boolean_with_probability final_interaction_probability)
 
@@ -702,10 +709,24 @@ to-report calc_mention_topic [ participant1 participant2 bforceMention ]
 end
 
 ;; calculates whether the topic is talked about in current interaction
-to-report calc_mention_topic_probability [ participant1 participant2 bforceMention ]
+to-report calc_mention_topic_probability [ participant1 participant2 bforceMention interaction_type]
  if bforceMention [
     report 1
   ]
+
+  ;; check which mention probability should be used
+  let mention_probability 0
+  (ifelse
+    interaction_type = "inter" [
+      set mention_probability avg_inter_mention_percentage
+    ]
+    interaction_type = "intra" [
+      set mention_probability avg_intra_mention_percentage
+    ]
+    interaction_type = "farmgroup_meeting" [
+      set mention_probability avg_meeting_mention_percentage
+    ]
+  )
 
   ;; cant talk about topic you never heard of
   if [adoption_state] of participant1 = 0 and [adoption_state] of participant2 = 0 [
@@ -723,10 +744,10 @@ to-report calc_mention_topic_probability [ participant1 participant2 bforceMenti
   let adopter_interaction_influence (calc_adoption_state_influence_on_mention participant1 participant2)
 
   ;; calc final interaction probability
-  let final_interaction_probability (avg_mention_percentage / 100)
-  set final_interaction_probability (final_interaction_probability + (adopter_type_influence * (avg_mention_percentage / 100))) ;; influence of adopter type
-  set final_interaction_probability (final_interaction_probability + (prev_topic_interactions_influence * (avg_mention_percentage / 100))) ;; influence of previous interaction
-  set final_interaction_probability (final_interaction_probability + (adopter_interaction_influence * (avg_mention_percentage / 100))) ;; influence of adoption phase
+  let final_interaction_probability (mention_probability / 100)
+  set final_interaction_probability (final_interaction_probability + (adopter_type_influence * (mention_probability / 100))) ;; influence of adopter type
+  set final_interaction_probability (final_interaction_probability + (prev_topic_interactions_influence * (mention_probability / 100))) ;; influence of previous interaction
+  set final_interaction_probability (final_interaction_probability + (adopter_interaction_influence * (mention_probability / 100))) ;; influence of adoption phase
 
   ;; percentage between 0 and 1
   set final_interaction_probability truncate_value final_interaction_probability 1 0
@@ -1284,10 +1305,10 @@ HORIZONTAL
 SLIDER
 1483
 254
-1736
+1779
 287
-avg_mention_percentage
-avg_mention_percentage
+avg_intra_mention_percentage
+avg_intra_mention_percentage
 0
 100
 1.9
@@ -1314,10 +1335,10 @@ NIL
 1
 
 SLIDER
-1483
-389
-1738
-422
+1486
+466
+1741
+499
 avg_inter_village_interaction_frequency
 avg_inter_village_interaction_frequency
 1
@@ -1329,10 +1350,10 @@ days
 HORIZONTAL
 
 SLIDER
-1483
-350
-1737
-383
+1486
+427
+1740
+460
 avg_intra_village_interaction_frequency
 avg_intra_village_interaction_frequency
 1
@@ -1344,10 +1365,10 @@ days
 HORIZONTAL
 
 SLIDER
-1483
-429
-1739
-462
+1486
+506
+1742
+539
 avg_chief_farmer_meeting_frequency
 avg_chief_farmer_meeting_frequency
 1
@@ -1413,10 +1434,10 @@ NIL
 1
 
 SWITCH
-1480
-642
-1705
-675
+1483
+719
+1708
+752
 is_visible_update_activated
 is_visible_update_activated
 1
@@ -1441,10 +1462,10 @@ NIL
 1
 
 SWITCH
-1479
-680
-1706
-713
+1482
+757
+1709
+790
 check_finished_condition
 check_finished_condition
 0
@@ -1452,10 +1473,10 @@ check_finished_condition
 -1000
 
 SLIDER
-1483
-294
-1737
-327
+1486
+371
+1740
+404
 percentage_negative_WoM
 percentage_negative_WoM
 0
@@ -1496,10 +1517,10 @@ run_until_day_x
 Number
 
 SLIDER
-1483
-481
-1741
-514
+1486
+558
+1744
+591
 base_adoption_probability
 base_adoption_probability
 0.1
@@ -1599,25 +1620,55 @@ Simulation Parameter
 1
 
 TEXTBOX
-1483
-608
-1633
-627
+1486
+685
+1636
+704
 UI Settings
 15
 0.0
 1
 
 SLIDER
-1483
-530
-1862
-563
+1486
+607
+1865
+640
 farmgroup_meeting_attendance_percentage
 farmgroup_meeting_attendance_percentage
 0
 100
 60.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+1484
+295
+1763
+328
+avg_inter_mention_percentage
+avg_inter_mention_percentage
+0
+100
+2.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+1485
+332
+1789
+365
+avg_meeting_mention_percentage
+avg_meeting_mention_percentage
+0
+100
+10.0
 1
 1
 NIL
