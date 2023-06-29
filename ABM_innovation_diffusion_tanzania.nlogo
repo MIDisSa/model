@@ -540,7 +540,7 @@ to prepare_agents_for_interaction
 
     ;; decrease attitude if no interactions happen
     if not b_interacts_this_tick [
-      set innovation_adoption_attitude ( max list (innovation_adoption_attitude - attitude_decrease_per_tick) 0)
+            if innovation_adoption_attitude > 0 [set innovation_adoption_attitude ( max list (innovation_adoption_attitude - attitude_decrease_per_tick) 0)]
     ]
  ]
 end
@@ -1311,7 +1311,7 @@ avg_intra_mention_percentage
 avg_intra_mention_percentage
 0
 100
-1.9
+2.1
 1
 1
 %
@@ -1440,7 +1440,7 @@ SWITCH
 752
 is_visible_update_activated
 is_visible_update_activated
-1
+0
 1
 -1000
 
@@ -1632,7 +1632,7 @@ UI Settings
 SLIDER
 1486
 607
-1865
+1882
 640
 farmgroup_meeting_attendance_percentage
 farmgroup_meeting_attendance_percentage
@@ -1641,37 +1641,37 @@ farmgroup_meeting_attendance_percentage
 60.0
 1
 1
-NIL
+%
 HORIZONTAL
 
 SLIDER
 1484
 295
-1763
+1780
 328
 avg_inter_mention_percentage
 avg_inter_mention_percentage
 0
 100
-2.0
+1.77
 1
 1
-NIL
+%
 HORIZONTAL
 
 SLIDER
 1485
 332
-1789
+1807
 365
 avg_meeting_mention_percentage
 avg_meeting_mention_percentage
 0
 100
-10.0
+5.0
 1
 1
-NIL
+%
 HORIZONTAL
 
 @#$#@#$#@
@@ -2128,15 +2128,11 @@ NetLogo 6.2.2
     </enumeratedValueSet>
   </experiment>
   <experiment name="experiment" repetitions="10" runMetricsEveryStep="true">
-    <setup>reset_simulation</setup>
-    <go>go
-direct_village_intervention</go>
-    <timeLimit steps="365"/>
+    <setup>reset_simulation
+direct_village_intervention</setup>
+    <go>go</go>
+    <exitCondition>count turtles with [adoption_state = 2] + count turtles with [adoption_state = 1] &gt;= count turtles - 2</exitCondition>
     <metric>nr_of_adopters</metric>
-    <metric>nr_of_considerers</metric>
-    <metric>nr_of_unknown</metric>
-    <metric>nr_villages_with_adopters</metric>
-    <metric>nr_villages_with_considerers</metric>
   </experiment>
 </experiments>
 @#$#@#$#@
