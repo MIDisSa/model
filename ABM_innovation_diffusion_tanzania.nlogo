@@ -9,12 +9,6 @@ undirected-link-breed [members member]
 undirected-link-breed [research-links research-link]
 
 globals [
-
-  ;; -----------------------------------------
-  ;; other variable parameters
-  farmgroup_meeting_attendance_percentage     ;; defines the percentage of farmers who attend a farmgroup meeting
-
-
   ;; -----------------------------------------
   ;; parameters influencing mentioning percentage
 
@@ -188,8 +182,6 @@ end
 
 ;; initializes all semi-fixed parameters used in the model
 to init_parameters
-  set farmgroup_meeting_attendance_percentage 60 ;; in %
-
   set max_influence_adopter_type_on_mention 25 ;; in %
   set max_influence_prev_interactions_on_mention 20 ;; in %
   set max_influence_adoption_state_on_mention 10 ;; in %
@@ -1421,10 +1413,10 @@ NIL
 1
 
 SWITCH
-1483
-609
-1708
+1480
 642
+1705
+675
 is_visible_update_activated
 is_visible_update_activated
 1
@@ -1449,13 +1441,13 @@ NIL
 1
 
 SWITCH
-1482
-647
-1709
+1479
 680
+1706
+713
 check_finished_condition
 check_finished_condition
-1
+0
 1
 -1000
 
@@ -1607,14 +1599,29 @@ Simulation Parameter
 1
 
 TEXTBOX
-1486
-575
-1636
-594
+1483
+608
+1633
+627
 UI Settings
 15
 0.0
 1
+
+SLIDER
+1483
+530
+1862
+563
+farmgroup_meeting_attendance_percentage
+farmgroup_meeting_attendance_percentage
+0
+100
+60.0
+1
+1
+NIL
+HORIZONTAL
 
 @#$#@#$#@
 ## Agent-based Model of Innovation Diffusion among Smallholder Farmer Households
