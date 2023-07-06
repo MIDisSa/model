@@ -54,7 +54,8 @@ globals [
 
   direct_ad_influence                              ;; defines influence of intervetion targetted directly to farmers
   train_chiefs_influence                           ;; defines influence of ToT on chiefs
-
+  direct_ad_discount_influence                     ;; defines influence of intervention targeted directly to farmers and offering them a discount on the HB
+  direct_ad_delayed_payment_influence              ;; defines influence of intervention targeted directly to farmers and offering them a delayed payment option
 
   attitude_decrease_per_tick                       ;; defines how much the attitude decreases per tick (stops at 0 --> no bad attitude can be created by not talking)
 
@@ -207,7 +208,8 @@ to init_parameters
 
   set direct_ad_influence 150 ;; in %
   set train_chiefs_influence 200 ;; in %
-
+  set direct_ad_discount_influence 150 ;; in % ;; TODO: maybe different number?
+  set direct_ad_delayed_payment_influence 150 ;; in % ;; TODO: maybe different number?
 
   set avg_check_adoption_interval 5
   set max_influence_adopter_type_on_adoption  10 ;; in %
@@ -978,10 +980,18 @@ end
 ;; interventions
 
 to direct_village_intervention
-  contact_farmers direct_ad_nr_of_villages percentage_of_villagers_addressed / 100
+  contact_farmers direct_ad_nr_of_villages percentage_of_villagers_addressed / 100 direct_ad_influence
 end
 
-to contact_farmers [ nr_of_villages_selected percentage_of_farmers ]
+to direct_village_intervention_discount
+  contact_farmers direct_ad_nr_of_villages percentage_of_villagers_addressed / 100 direct_ad_discount_influence
+end
+
+to direct_village_intervention_delayed_payment
+  contact_farmers direct_ad_nr_of_villages percentage_of_villagers_addressed / 100 direct_ad_delayed_payment_influence
+end
+
+to contact_farmers [ nr_of_villages_selected percentage_of_farmers influence]
   let chosen_village_ids (at-most-n-of-list nr_of_villages_selected all_village_ids)
 ;  let chosen_village_ids [ 1 ]
 
@@ -994,7 +1004,7 @@ to contact_farmers [ nr_of_villages_selected percentage_of_farmers ]
 
     if any? village_farmers [
       ask village_farmers [
-      interact research_team_agent direct_ad_influence false self 0 true true false
+      interact research_team_agent influence false self 0 true true false
       ]
     ]
   ]
@@ -1404,10 +1414,10 @@ Interventions
 1
 
 BUTTON
-19
-483
-108
-516
+21
+476
+110
+509
 Direct Ad
 direct_village_intervention
 NIL
@@ -1432,10 +1442,10 @@ is_visible_update_activated
 -1000
 
 BUTTON
-17
-617
-107
-650
+16
+664
+106
+697
 Train Chiefs
 train_chiefs
 NIL
@@ -1552,10 +1562,10 @@ count turtles with [adoption_state = 1]
 11
 
 SLIDER
-127
-542
-335
-575
+17
+602
+225
+635
 percentage_of_villagers_addressed
 percentage_of_villagers_addressed
 0.0
@@ -1567,10 +1577,10 @@ percentage_of_villagers_addressed
 HORIZONTAL
 
 SLIDER
-127
-484
-331
-517
+18
+557
+222
+590
 direct_ad_nr_of_villages
 direct_ad_nr_of_villages
 0
@@ -1582,10 +1592,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-126
-616
-336
-649
+125
+663
+335
+696
 train_chiefs_nr
 train_chiefs_nr
 0
@@ -1614,6 +1624,40 @@ TEXTBOX
 UI Settings
 15
 0.0
+1
+
+BUTTON
+116
+476
+254
+509
+Direct Ad + Discount
+direct_village_intervention_discount
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
+
+BUTTON
+20
+515
+214
+548
+Direct Ad + Delayed Payment
+direct_village_intervention_delayed_payment
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
 1
 
 @#$#@#$#@
