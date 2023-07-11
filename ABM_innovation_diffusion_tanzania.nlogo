@@ -81,6 +81,8 @@ globals [
   counter
   neighborhood_list ;; list for keeping track of villages in one neighborhood (temp)
 
+  farmgroup_member ;; boolean value determining whether farmer is a member of a farmgroup
+
   ;; -----------------------------------------
   ;; simulation parameters
   direct_ad_frequency
@@ -127,7 +129,7 @@ turtles-own [
 
   ref_village_id
   ref_neighborhood_id
-
+  ref_farmgroup_id
 
 ]
 
@@ -172,6 +174,7 @@ to setup
   grow-villages
   grow-neighborhoods
   create_villages
+  create_farmgroups
 
   init-research-team
 
@@ -461,13 +464,15 @@ to create_villages
     create-chiefs 1 [
       setxy (item 0 coord) (item 1 coord)
       set ref_village_id x
+      set ref_farmgroup_id x
       set ref_neighborhood_id ([neighborhood_id] of cur_patch) ;; set neighborhood_id by taking it from one of the patches from the village
     ]
 
     let cur_chief chiefs with [xcor = (item 0 coord) and ycor = (item 1 coord)]
     let nr_of_villagers (determine-nr-of-village-inhabitants x)
     repeat nr_of_villagers [
-      add_farmer_to_village x cur_chief ]
+      add_farmer_to_village x cur_chief
+    ]
   ]
 end
 
@@ -489,11 +494,30 @@ to add_farmer_to_village [vill_id this_chief]
 
   if selected_empty_patch != nobody [
     create-farmers 1 [
-      create-members-with this_chief
       set ref_village_id ([ref_village_id] of one-of this_chief)
       set ref_neighborhood_id ([ref_neighborhood_id] of one-of this_chief)
+
       move-to selected_empty_patch
     ]
+  ]
+end
+
+to create_farmgroups
+  ;; first, set farmgroup id of all farmers to -1
+  ask turtles with [ ;; only consider farmers
+    breed != researchers and
+    breed != chiefs
+  ]
+  [
+    set ref_farmgroup_id -1
+  ]
+  ;; calculate number of farmers who are part of a farmgroup
+  let num_farmers_in_groups ((count turtles with [breed != researchers and breed != chiefs] / 100) * percentage_of_farmers_in_farmgroup )
+
+  ;; randomly select turtles who will be in a farmgroup and set their farmgroup_id
+  ask n-of num_farmers_in_groups turtles with [breed != researchers and breed != chiefs] [
+    create-members-with (turtles with [breed = chiefs and ref_village_id = [ref_village_id] of myself])
+    set ref_farmgroup_id ref_village_id
   ]
 end
 
@@ -659,10 +683,10 @@ to chief-farmer-meeting-interaction
     ;; increase the interactions counter for this farmer by number of interactions
     set nr_of_council_interactions (nr_of_council_interactions + 1)
 
-    let village_size (count farmers with [ref_village_id = [ref_village_id] of myself])
+    let farmgroup_size (count farmers with [ref_farmgroup_id = [ref_farmgroup_id] of myself])
 
     ;; consider that not all farmers may attend
-    let nr_of_attendants floor ((farmgroup_meeting_attendance_percentage / 100) * village_size) ;; floor as half-person cannot attend
+    let nr_of_attendants floor ((farmgroup_meeting_attendance_percentage / 100) * farmgroup_size) ;; floor as half-person cannot attend
 
     ;; get all farmers in this village
     let village_farmers (at-most-n-of nr_of_attendants member-neighbors)
@@ -1354,10 +1378,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-1480
-282
-1733
-315
+1485
+335
+1738
+368
 avg_mention_percentage
 avg_mention_percentage
 0
@@ -1386,10 +1410,10 @@ NIL
 1
 
 SLIDER
-1480
-417
-1735
-450
+1485
+470
+1740
+503
 avg_inter_village_interaction_frequency
 avg_inter_village_interaction_frequency
 1
@@ -1401,10 +1425,10 @@ days
 HORIZONTAL
 
 SLIDER
-1480
-378
-1734
-411
+1485
+431
+1739
+464
 avg_intra_village_interaction_frequency
 avg_intra_village_interaction_frequency
 1
@@ -1416,10 +1440,10 @@ days
 HORIZONTAL
 
 SLIDER
-1480
-457
-1736
-490
+1485
+510
+1741
+543
 avg_chief_farmer_meeting_frequency
 avg_chief_farmer_meeting_frequency
 1
@@ -1485,10 +1509,10 @@ NIL
 1
 
 SWITCH
-1480
-637
-1705
-670
+1485
+690
+1710
+723
 is_visible_update_activated
 is_visible_update_activated
 1
@@ -1513,10 +1537,10 @@ NIL
 1
 
 SWITCH
-1479
-675
-1706
-708
+1484
+728
+1711
+761
 check_finished_condition
 check_finished_condition
 1
@@ -1524,10 +1548,10 @@ check_finished_condition
 -1000
 
 SLIDER
-1480
-322
-1734
-355
+1485
+375
+1739
+408
 percentage_negative_WoM
 percentage_negative_WoM
 0
@@ -1568,10 +1592,10 @@ run_until_day_x
 Number
 
 SLIDER
-1480
-509
-1738
-542
+1485
+562
+1743
+595
 base_adoption_probability
 base_adoption_probability
 0.1
@@ -1661,20 +1685,20 @@ NIL
 HORIZONTAL
 
 TEXTBOX
-1484
-247
-1675
-285
+1489
+300
+1680
+338
 Simulation Parameter
 15
 0.0
 1
 
 TEXTBOX
-1483
-603
-1633
-622
+1488
+656
+1638
+675
 UI Settings
 15
 0.0
@@ -1690,6 +1714,21 @@ nr_of_neighborhoods
 0
 nr_of_villages
 20.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+1478
+230
+1803
+263
+percentage_of_farmers_in_farmgroup
+percentage_of_farmers_in_farmgroup
+0
+100
+53.0
 1
 1
 NIL
