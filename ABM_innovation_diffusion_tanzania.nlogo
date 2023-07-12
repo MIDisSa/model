@@ -338,7 +338,7 @@ to link_farmers_inter_village
 
   ask turtles with [breed != researchers] [
 
-    let friends at-most-n-of-more-from-same-neighborhood my_remaining_inter_vill_link_nr other turtles with [ ;;TODO: make it more likely to befriend someone from same neighborhood
+    let friends at-most-n-of-more-from-same-neighborhood my_remaining_inter_vill_link_nr other turtles with [
       breed != researchers and
       ref_village_id != [ref_village_id] of myself and
         my_remaining_inter_vill_link_nr > 0 ] ref_neighborhood_id
