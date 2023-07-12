@@ -511,6 +511,7 @@ to create_farmgroups
   ]
   ;; calculate number of farmers who are part of a farmgroup
   let num_farmers_in_groups ((count turtles with [breed != researchers and breed != chiefs] / 100) * percentage_of_farmers_in_farmgroup )
+  set num_farmers_in_groups truncate_value num_farmers_in_groups count farmers 0 ;; plausi check
 
   ;; randomly select turtles who will be in a farmgroup and set their farmgroup_id
   ask n-of num_farmers_in_groups turtles with [breed != researchers and breed != chiefs] [
@@ -1708,7 +1709,7 @@ percentage_of_farmers_in_farmgroup
 percentage_of_farmers_in_farmgroup
 0
 100
-53.0
+100.0
 1
 1
 NIL
