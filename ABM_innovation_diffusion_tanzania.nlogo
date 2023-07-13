@@ -18,7 +18,6 @@ globals [
   ;; -----------------------------------------
   ;; parameters influencing mentioning percentage
 
-  max_influence_adopter_type_on_mention              ;; defines max influence of topic mention during interaction of adopter type of participants
   max_influence_prev_interactions_on_mention         ;; defines max influence of topic mention during interaction of previous interactions of participants
   max_influence_adoption_state_on_mention            ;; defines max influence of topic mention during interaction of adoption state of participants
   optimal_nr_of_interactions_for_mention             ;; defines optimal value of previous interaction that the topic is mentioned
@@ -30,7 +29,7 @@ globals [
   ;; parameters affecting adoption-decision
 
   avg_check_adoption_interval                       ;; defines the interval in which every farmer checks whether he wants to adopt or not
-  max_influence_adopter_type_on_adoption            ;; defines how heavilgy adoption decision is influenced by adopter type of farmer
+  max_influence_risk_aversion_on_adoption           ;; defines how heavilgy adoption decision is influenced by the risk aversion of farmer
   max_influence_attitude_on_adoption                ;; defines how heavily adoption decision is influenced by attitude of the farmer
   max_influence_adopter_friends_on_adoption         ;; defines how heavilty the adoption decision is influenced by the amoung of friends/neighbors already adopted
 
@@ -43,7 +42,7 @@ globals [
   chief_influence                                   ;; defines the influence of a chief during a farmgroup meeting
 
   max_influence_adopter_counterpart_on_attitude     ;; defines influence of a farmer which already adopted to another one
-  max_influence_adopter_type_on_attitude            ;; defines the influence of the adopter type on the attitude change during an interaction
+  max_influence_risk_aversion_on_attitude           ;; defines the influence of the risk aversion on the attitude change during an interaction
   base_attitude_change                              ;; defines by what value the attitude is changed during an interaction
 
 
@@ -76,6 +75,13 @@ globals [
   research_team_agent ;; research team variable for direct access
   average_farmer_dummy ;; dummy farmer of whom all values are average
 
+  villages_per_neighborhood ;; calculated number of villages in one neighborhood (upper)
+  start_counter ;; start of sublist
+  end_counter ;; end of sublist
+  counter
+  neighborhood_list ;; list for keeping track of villages in one neighborhood (temp)
+
+  farmgroup_member ;; boolean value determining whether farmer is a member of a farmgroup
 
   ;; -----------------------------------------
   ;; simulation parameters
@@ -108,7 +114,7 @@ turtles-own [
   my_remaining_inter_vill_link_nr
 
   ;; adoption variable
-  adopter_type ;; 1=innovator, 2=early adopter, 3=early majority, 4=late majority, 5=laggards
+  risk_aversion ;; 1=risk-seeking - 5=risk-averse
   adoption_state ;; 0=not aware of innovation, 1=consideration, 2=adopter
   next_adoption_decision_tick_nr ;; states the tick nr of this agent when he decides about adopting again
   innovation_adoption_attitude ;; defines the attitude of the agent towards the innovation (can be positive or negative; declines over time by attitude_decrease_per_tick)
@@ -122,7 +128,8 @@ turtles-own [
 
 
   ref_village_id
-
+  ref_neighborhood_id
+  ref_farmgroup_id
 
 ]
 
@@ -136,6 +143,7 @@ chiefs-own [
 patches-own [
 
   village_id
+  neighborhood_id
 
 ]
 
@@ -164,7 +172,9 @@ to setup
 
   ;; agents and links
   grow-villages
+  grow-neighborhoods
   create_villages
+  create_farmgroups
 
   init-research-team
 
@@ -191,7 +201,6 @@ end
 to init_parameters
   set farmgroup_meeting_attendance_percentage 90 ;; in %
 
-  set max_influence_adopter_type_on_mention 25 ;; in %
   set max_influence_prev_interactions_on_mention 20 ;; in %
   set max_influence_adoption_state_on_mention 10 ;; in %
   set optimal_nr_of_interactions_for_mention 10
@@ -203,7 +212,7 @@ to init_parameters
   set base_influence_counterpart 100 ;; in %
   set chief_influence 175 ;; in %
   set max_influence_adopter_counterpart_on_attitude 20 ;; in %
-  set max_influence_adopter_type_on_attitude 25 ;; in %
+  set max_influence_risk_aversion_on_attitude 25 ;; in %
 
 
   set direct_ad_influence 150 ;; in %
@@ -212,7 +221,7 @@ to init_parameters
   set direct_ad_delayed_payment_influence 150 ;; in % ;; TODO: maybe different number?
 
   set avg_check_adoption_interval 5
-  set max_influence_adopter_type_on_adoption  10 ;; in %
+  set max_influence_risk_aversion_on_adoption  10 ;; in %
   set max_influence_attitude_on_adoption 50 ;; in %
   set max_influence_adopter_friends_on_adoption 20 ;; in %
 
@@ -236,12 +245,12 @@ to init-research-team
   set research_team_agent one-of researchers
 
   create-researchers 1 [
-    set adopter_type 3
+    set risk_aversion 3
     set adoption_state 0
     set nr_topic_related_interactions 0
   ]
 
-  set average_farmer_dummy one-of researchers with [adopter_type = 3]
+  set average_farmer_dummy one-of researchers with [risk_aversion = 3]
 end
 
 ;; inititalizes the general properties of the agents
@@ -253,8 +262,8 @@ to init_agents_general
   ]
 
   ask farmers [
-    set color white
-    set shape "person farmer"
+    set color black
+    set shape "dot" ;;"person farmer"
   ]
 
   ask researchers [
@@ -270,12 +279,12 @@ to init_agents_general
     set next_adoption_decision_tick_nr 0
     set next_inter_village_interaction_tick_nr calc_next_inter_village_interaction
     set next_intra_village_interaction_tick_nr calc_next_intra_village_interaction
-    set adopter_type get_adopter_type
+    set risk_aversion get_risk_aversion
   ]
 end
 
-;; returns an adopter type according Roger's probability
-to-report get_adopter_type
+;; returns the risk aversion (the weights are currently still based on Roger's probability of adopter types) ;; TODO: mit korrekten Daten ersetzen sobald vorhanden
+to-report get_risk_aversion
   let items [ 1 2 3 4 5 ]
   let weights (list 0.025 0.135 0.34 0.34 0.16)
   report (choose_with_probability items weights)
@@ -331,11 +340,10 @@ to link_farmers_inter_village
 
   ask turtles with [breed != researchers] [
 
-    let friends at-most-n-of my_remaining_inter_vill_link_nr other turtles with [
+    let friends at-most-n-of-more-from-same-neighborhood my_remaining_inter_vill_link_nr other turtles with [
       breed != researchers and
       ref_village_id != [ref_village_id] of myself and
-        my_remaining_inter_vill_link_nr > 0 ]
-
+        my_remaining_inter_vill_link_nr > 0 ] ref_neighborhood_id
 
     if friends != nobody [
         create-inter_village_friends-with friends
@@ -343,6 +351,35 @@ to link_farmers_inter_village
         set my_remaining_inter_vill_link_nr (my_remaining_inter_vill_link_nr - count friends)
     ]
 ]
+end
+
+to grow-neighborhoods
+   ask patches [
+    set neighborhood_id -1 ;; set all neighborhood ids to -1 to keep track of mistakes
+  ]
+
+  if nr_of_neighborhoods != 0 [ ;; only do this if there are more than 0 neighborhoods
+
+    set villages_per_neighborhood (nr_of_villages / nr_of_neighborhoods)
+    set start_counter 0
+    set end_counter (round villages_per_neighborhood)
+    set counter 0
+
+    loop [ ;; loop for every neighborhood
+      if counter = nr_of_neighborhoods [ stop ] ;; stop if we have set number of neighborhoods
+      if start_counter > nr_of_villages [ stop ] ;; stop if we reach end of list
+      set counter (counter + 1)
+      if end_counter >= (length all_village_ids) [ set end_counter (length all_village_ids) ] ;; reset end counter if it is larger than length of list
+      set neighborhood_list sublist all_village_ids start_counter end_counter ;; define sublist of villages belonging to new neighborhood ;; end counter is not included
+      ask patches with [ member? village_id neighborhood_list ] [ ;; all patches of villages which are in the sublist
+        set neighborhood_id counter + 1 ;; set neighborhood id
+      ]
+
+      ;; update start and end counter
+      set start_counter (start_counter + round villages_per_neighborhood)
+      set end_counter (end_counter + round villages_per_neighborhood)
+    ]
+  ]
 end
 
 ;; generates the defined number of villages in a random fashion
@@ -422,15 +459,20 @@ to create_villages
   foreach all_village_ids [
     x -> let coord (find_middle_of_village x)
 
+    let cur_patch one-of patches with [village_id = x ] ;; get one of the patches in the village in order to set the neighborhood_id of the chief correctly
+
     create-chiefs 1 [
       setxy (item 0 coord) (item 1 coord)
       set ref_village_id x
+      set ref_farmgroup_id x
+      set ref_neighborhood_id ([neighborhood_id] of cur_patch) ;; set neighborhood_id by taking it from one of the patches from the village
     ]
 
     let cur_chief chiefs with [xcor = (item 0 coord) and ycor = (item 1 coord)]
     let nr_of_villagers (determine-nr-of-village-inhabitants x)
     repeat nr_of_villagers [
-      add_farmer_to_village x cur_chief ]
+      add_farmer_to_village x cur_chief
+    ]
   ]
 end
 
@@ -452,10 +494,30 @@ to add_farmer_to_village [vill_id this_chief]
 
   if selected_empty_patch != nobody [
     create-farmers 1 [
-      create-members-with this_chief
       set ref_village_id ([ref_village_id] of one-of this_chief)
+      set ref_neighborhood_id ([ref_neighborhood_id] of one-of this_chief)
+
       move-to selected_empty_patch
     ]
+  ]
+end
+
+to create_farmgroups
+  ;; first, set farmgroup id of all farmers to -1
+  ask turtles with [ ;; only consider farmers
+    breed != researchers and
+    breed != chiefs
+  ]
+  [
+    set ref_farmgroup_id -1
+  ]
+  ;; calculate number of farmers who are part of a farmgroup
+  let num_farmers_in_groups ((count turtles with [breed != researchers and breed != chiefs] / 100) * percentage_of_farmers_in_farmgroup )
+
+  ;; randomly select turtles who will be in a farmgroup and set their farmgroup_id
+  ask n-of num_farmers_in_groups turtles with [breed != researchers and breed != chiefs] [
+    create-members-with (turtles with [breed = chiefs and ref_village_id = [ref_village_id] of myself])
+    set ref_farmgroup_id ref_village_id
   ]
 end
 
@@ -550,7 +612,7 @@ to prepare_agents_for_interaction
 
     ;; decrease attitude if no interactions happen
     if not b_interacts_this_tick [
-      set innovation_adoption_attitude ( max list (innovation_adoption_attitude - attitude_decrease_per_tick) 0)
+      if innovation_adoption_attitude > 0 [set innovation_adoption_attitude ( max list (innovation_adoption_attitude - attitude_decrease_per_tick) 0)]
     ]
  ]
 end
@@ -621,10 +683,10 @@ to chief-farmer-meeting-interaction
     ;; increase the interactions counter for this farmer by number of interactions
     set nr_of_council_interactions (nr_of_council_interactions + 1)
 
-    let village_size (count farmers with [ref_village_id = [ref_village_id] of myself])
+    let farmgroup_size (count farmers with [ref_farmgroup_id = [ref_farmgroup_id] of myself])
 
     ;; consider that not all farmers may attend
-    let nr_of_attendants floor ((farmgroup_meeting_attendance_percentage / 100) * village_size) ;; floor as half-person cannot attend
+    let nr_of_attendants floor ((farmgroup_meeting_attendance_percentage / 100) * farmgroup_size) ;; floor as half-person cannot attend
 
     ;; get all farmers in this village
     let village_farmers (at-most-n-of nr_of_attendants member-neighbors)
@@ -722,10 +784,6 @@ to-report calc_mention_topic_probability [ participant1 participant2 bforceMenti
     report 0
   ]
 
-  ;; calculate influence of adopter types
-  ;; compare adopter types, the smaller the average of both, the likelier they talk about the innovation
-  let adopter_type_influence (calc_adopter_type_influence_on_mention ((([adopter_type] of participant1 ) + ([adopter_type] of participant2)) / 2))
-
   ;; calculate influence of previous interaction
   let prev_topic_interactions_influence (calc_prev_interaction_influence_on_mention participant1 participant2)
 
@@ -734,26 +792,12 @@ to-report calc_mention_topic_probability [ participant1 participant2 bforceMenti
 
   ;; calc final interaction probability
   let final_interaction_probability (avg_mention_percentage / 100)
-  set final_interaction_probability (final_interaction_probability + (adopter_type_influence * (avg_mention_percentage / 100))) ;; influence of adopter type
   set final_interaction_probability (final_interaction_probability + (prev_topic_interactions_influence * (avg_mention_percentage / 100))) ;; influence of previous interaction
   set final_interaction_probability (final_interaction_probability + (adopter_interaction_influence * (avg_mention_percentage / 100))) ;; influence of adoption phase
 
   ;; percentage between 0 and 1
   set final_interaction_probability truncate_value final_interaction_probability 1 0
   report final_interaction_probability
-end
-
-
-
-to-report calc_adopter_type_influence_on_mention [n_adopter_type]
-  ;; arbitrarly defined values based on adopter type curve
-  let influence (ifelse-value
-  n_adopter_type <= 1.5 [max_influence_adopter_type_on_mention]
-  n_adopter_type <= 2.5 [max_influence_adopter_type_on_mention * 0.5]
-  n_adopter_type <= 3.5 [max_influence_adopter_type_on_mention * 0.2]
-  n_adopter_type <= 4.5 [max_influence_adopter_type_on_mention * -0.5]
-  [max_influence_adopter_type_on_mention * -1])
-  report influence / 100
 end
 
 to-report calc_prev_interaction_influence_on_mention [participant1 participant2]
@@ -819,8 +863,8 @@ to update_attitude_single_agent [agent b_update_this_agent other_agent other_age
     ;; attitude change is influenced by type of adopter, influence of other agent, whether other agent already adopted innovation
     ;; -----------
 
-    ;; adopter type influence (laggers tend to accept negative information more than positiv and vice versa for innovators)
-    let adopter_type_influence (calc_adopter_type_influence_on_attitude [adopter_type] of agent b_is_negative_wom)
+    ;; risk aversion influence (risk averse farmers tend to accept negative information more than positive and vice versa for risk seeking farmers)
+    let risk_aversion_influence (calc_risk_aversion_influence_on_attitude [risk_aversion] of agent b_is_negative_wom)
 
 
     ;; adoption state influence - if other agent is adopter, his opinion is more valuable
@@ -829,7 +873,7 @@ to update_attitude_single_agent [agent b_update_this_agent other_agent other_age
 
     ;; change attitude change
     set final_attitude_change (final_attitude_change * (other_agent_influence / 100)) ;; influence of counterpart (a.k.a. trustworthiness)
-    set final_attitude_change (final_attitude_change + adopter_type_influence) ;; influence of adopter type
+    set final_attitude_change (final_attitude_change + risk_aversion_influence) ;; influence of risk aversion
     set final_attitude_change (final_attitude_change + adoption_state_influence) ;; influence of adoption state
     set final_attitude_change (final_attitude_change * (ifelse-value (b_is_negative_wom) [-1] [1])) ;; influence of negative WoM (negate)
 
@@ -857,26 +901,26 @@ to-report calc_adopter_influence_on_attitude [other_agent]
   report 0
 end
 
-to-report calc_adopter_type_influence_on_attitude [input_adopter_type b_is_negative_wom]
-  let type_influence 0
+to-report calc_risk_aversion_influence_on_attitude [input_risk_aversion b_is_negative_wom]
+  let risk_aversion_influence 0
   ifelse b_is_negative_wom [
-      set type_influence (ifelse-value
-        input_adopter_type = 1 [ max_influence_adopter_type_on_attitude * -1 ]
-        input_adopter_type = 2 [ max_influence_adopter_type_on_attitude * -0.5]
-        input_adopter_type = 3 [ max_influence_adopter_type_on_attitude * -0.2]
-        input_adopter_type = 4 [ max_influence_adopter_type_on_attitude * 0.5 ]
-        input_adopter_type = 5 [ max_influence_adopter_type_on_attitude ]
+      set risk_aversion_influence (ifelse-value
+        input_risk_aversion = 1 [ max_influence_risk_aversion_on_attitude * -1 ]
+        input_risk_aversion = 2 [ max_influence_risk_aversion_on_attitude * -0.5]
+        input_risk_aversion = 3 [ max_influence_risk_aversion_on_attitude * -0.2]
+        input_risk_aversion = 4 [ max_influence_risk_aversion_on_attitude * 0.5 ]
+        input_risk_aversion = 5 [ max_influence_risk_aversion_on_attitude ]
       )
     ] [
-      set type_influence (ifelse-value
-        input_adopter_type = 1 [ max_influence_adopter_type_on_attitude ]
-        input_adopter_type = 2 [ max_influence_adopter_type_on_attitude * 0.5 ]
-        input_adopter_type = 3 [ max_influence_adopter_type_on_attitude * 0.2 ]
-        input_adopter_type = 4 [ max_influence_adopter_type_on_attitude * -0.5 ]
-        input_adopter_type = 5 [ max_influence_adopter_type_on_attitude * -1 ])
+      set risk_aversion_influence (ifelse-value
+        input_risk_aversion = 1 [ max_influence_risk_aversion_on_attitude ]
+        input_risk_aversion = 2 [ max_influence_risk_aversion_on_attitude * 0.5 ]
+        input_risk_aversion = 3 [ max_influence_risk_aversion_on_attitude * 0.2 ]
+        input_risk_aversion = 4 [ max_influence_risk_aversion_on_attitude * -0.5 ]
+        input_risk_aversion = 5 [ max_influence_risk_aversion_on_attitude * -1 ])
     ]
 
-  report type_influence / 100
+  report risk_aversion_influence / 100
 end
 
 to update_village_visuals
@@ -904,7 +948,7 @@ to check_adoption
       ;; decision is based on base_adoption_percentage, own attitude, own adopter_type and adoption rate of friends/neighbors)
       let final_probability base_adoption_probability / 100
 
-      set final_probability (final_probability + (calc_adopter_type_influence_on_decision self * (base_adoption_probability / 100))) ;; influence of adopter type
+      set final_probability (final_probability + (calc_risk_aversion_influence_on_decision self * (base_adoption_probability / 100))) ;; influence of risk aversion
       set final_probability (final_probability + (calc_adopter_friends_influence_on_decision self * (base_adoption_probability / 100))) ;; influence of adoption rate of friends
       set final_probability (final_probability + (calc_attitude_influence_on_decision self * (base_adoption_probability / 100))) ;; influence of attitude towards innovation
 
@@ -923,15 +967,15 @@ to check_adoption
   ]
 end
 
-to-report calc_adopter_type_influence_on_decision [agent]
+to-report calc_risk_aversion_influence_on_decision [agent]
   ;; arbitrarly defined values based on adopter type curve
-  let temp_adopter_type [adopter_type] of agent
+  let temp_risk_aversion [risk_aversion] of agent
   let influence (ifelse-value
-  temp_adopter_type = 1 [max_influence_adopter_type_on_adoption]
-  temp_adopter_type = 2 [max_influence_adopter_type_on_adoption * 0.5]
-  temp_adopter_type = 3 [max_influence_adopter_type_on_adoption * 0.2]
-  temp_adopter_type = 4 [max_influence_adopter_type_on_adoption * -0.5]
-  temp_adopter_type = 5 [max_influence_adopter_type_on_adoption * -1])
+  temp_risk_aversion = 1 [max_influence_risk_aversion_on_adoption]
+  temp_risk_aversion = 2 [max_influence_risk_aversion_on_adoption * 0.5]
+  temp_risk_aversion = 3 [max_influence_risk_aversion_on_adoption * 0.2]
+  temp_risk_aversion = 4 [max_influence_risk_aversion_on_adoption * -0.5]
+  temp_risk_aversion = 5 [max_influence_risk_aversion_on_adoption * -1])
   report influence / 100
 end
 
@@ -1059,8 +1103,6 @@ end
 ;; ----------------------------------------------------------------------------------------------------------------------------------------------------------
 ;; helper
 
-
-
 to-report choose_boolean_with_probability [probability_true]
   let items [ true false ]
   let weights list probability_true (1 - probability_true)
@@ -1098,6 +1140,32 @@ to-report at-most-n-of-list [ n lst ]
   ] [
     report lst
   ]
+end
+
+;; returns agentset containing n agents of given agentset
+;; returned agentset contains more agents from given neighborhood_id than not
+to-report at-most-n-of-more-from-same-neighborhood [ n agentset id ]
+
+  ;; create two agentsets from input agentset: one containing all agents from same neighborhood and one with all other agents
+  let same_neighborhood_friends agentset with [ ref_neighborhood_id = [ref_neighborhood_id] of myself ]
+  let different_neighborhood_friends agentset with [ ref_neighborhood_id != [ref_neighborhood_id] of myself ]
+
+  ;; 80% of friends are from same neighborhood
+  let num_friends_same_neighborhood ceiling n * 0.8
+  let num_friends_different_neighborhood n - num_friends_same_neighborhood
+
+  ;; take number of friends from corresponding agentsets ;; if agentset is smaller than n, take whole agentset
+  if count same_neighborhood_friends > num_friends_same_neighborhood [
+    set same_neighborhood_friends n-of num_friends_same_neighborhood same_neighborhood_friends
+  ]
+
+  if count different_neighborhood_friends > num_friends_different_neighborhood [
+    set different_neighborhood_friends n-of num_friends_different_neighborhood different_neighborhood_friends
+  ]
+
+  ;; return combined agentset of friends
+  let combined_friends (turtle-set same_neighborhood_friends different_neighborhood_friends)
+  report combined_friends
 end
 
 to-report truncate_value [value maxVal minVal]
@@ -1300,10 +1368,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-1483
-254
-1736
-287
+1485
+335
+1738
+368
 avg_mention_percentage
 avg_mention_percentage
 0
@@ -1332,10 +1400,10 @@ NIL
 1
 
 SLIDER
-1483
-389
-1738
-422
+1485
+470
+1740
+503
 avg_inter_village_interaction_frequency
 avg_inter_village_interaction_frequency
 1
@@ -1347,10 +1415,10 @@ days
 HORIZONTAL
 
 SLIDER
-1483
-350
-1737
-383
+1485
+431
+1739
+464
 avg_intra_village_interaction_frequency
 avg_intra_village_interaction_frequency
 1
@@ -1362,10 +1430,10 @@ days
 HORIZONTAL
 
 SLIDER
-1483
-429
-1739
-462
+1485
+510
+1741
+543
 avg_chief_farmer_meeting_frequency
 avg_chief_farmer_meeting_frequency
 1
@@ -1431,10 +1499,10 @@ NIL
 1
 
 SWITCH
-1483
-609
-1708
-642
+1485
+690
+1710
+723
 is_visible_update_activated
 is_visible_update_activated
 1
@@ -1459,10 +1527,10 @@ NIL
 1
 
 SWITCH
-1482
-647
-1709
-680
+1484
+728
+1711
+761
 check_finished_condition
 check_finished_condition
 1
@@ -1470,10 +1538,10 @@ check_finished_condition
 -1000
 
 SLIDER
-1483
-294
-1737
-327
+1485
+375
+1739
+408
 percentage_negative_WoM
 percentage_negative_WoM
 0
@@ -1514,10 +1582,10 @@ run_until_day_x
 Number
 
 SLIDER
-1483
-481
-1741
-514
+1485
+562
+1743
+595
 base_adoption_probability
 base_adoption_probability
 0.1
@@ -1607,20 +1675,20 @@ NIL
 HORIZONTAL
 
 TEXTBOX
-1487
-219
-1678
-257
+1489
+300
+1680
+338
 Simulation Parameter
 15
 0.0
 1
 
 TEXTBOX
-1486
-575
-1636
-594
+1488
+656
+1638
+675
 UI Settings
 15
 0.0
@@ -1659,6 +1727,36 @@ NIL
 NIL
 NIL
 1
+
+SLIDER
+1480
+182
+1689
+215
+nr_of_neighborhoods
+nr_of_neighborhoods
+0
+nr_of_villages
+20.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+1478
+230
+1803
+263
+percentage_of_farmers_in_farmgroup
+percentage_of_farmers_in_farmgroup
+0
+100
+53.0
+1
+1
+NIL
+HORIZONTAL
 
 @#$#@#$#@
 ## Agent-based Model of Innovation Diffusion among Smallholder Farmer Households
