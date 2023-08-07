@@ -45,6 +45,12 @@ globals [
   max_influence_risk_aversion_on_attitude           ;; defines the influence of the risk aversion on the attitude change during an interaction
   base_attitude_change                              ;; defines by what value the attitude is changed during an interaction
 
+  ;; Optimization restrictions
+  ;;max_budget                                      ;; defines maximum budget available. As soon as budget is exhausted interventions won't have any more effects
+  current_cost                                      ;; keeps track of total cost of already conducted interventions
+  adopters_and_considerers                          ;; total number of agents with adoption state 1 or 2
+  cost_per_adopter                                  ;; avg. cost to acquire one adopter with the implemented strategy
+  cost_per_considerer                               ;; avg. cost to acquire one considerer with the implemented strategy
 
 
 
@@ -85,8 +91,8 @@ globals [
 
   ;; -----------------------------------------
   ;; simulation parameters
-  direct_ad_frequency
-  train_chiefs_frequency
+  ;;direct_ad_frequency
+  ;;train_chiefs_frequency
 
   ;; -----------------------------------------
   ;; export lists
@@ -98,6 +104,7 @@ globals [
   nr_of_unknown
   nr_villages_with_adopters
   nr_villages_with_considerers
+  nr_of_contacted_villages
 
 ]
 
@@ -116,6 +123,7 @@ turtles-own [
   ;; adoption variable
   risk_aversion ;; 1=risk-seeking - 5=risk-averse
   adoption_state ;; 0=not aware of innovation, 1=consideration, 2=adopter
+  intervention_state ;; 0=no intervention, 1=direct ad, 2=ad + discount, 3=ad + delayed payment, 4=trained chief
   next_adoption_decision_tick_nr ;; states the tick nr of this agent when he decides about adopting again
   innovation_adoption_attitude ;; defines the attitude of the agent towards the innovation (can be positive or negative; declines over time by attitude_decrease_per_tick)
 
@@ -233,6 +241,14 @@ to init_parameters
   set nr_of_unknown 0
   set nr_villages_with_adopters 0
   set nr_villages_with_considerers 0
+
+  ;; optimization variables
+  ;;set max_budget 10000
+  set current_cost 0
+  set adopters_and_considerers 1
+  set cost_per_adopter 1
+  set cost_per_considerer 1
+  set nr_of_contacted_villages ((direct_ad_nr_of_villages / 100) * nr_of_villages)
 end
 
 
@@ -273,6 +289,7 @@ to init_agents_general
 
   ask turtles [
     set adoption_state 0
+    set intervention_state 0
     set innovation_adoption_attitude 0
     set size 5
     set nr_total_interactions 0
@@ -545,6 +562,10 @@ to go
   if is_visible_update_activated [
     update_village_visuals
   ]
+
+  if (count turtles with [adoption_state >= 1]) > 1 [set adopters_and_considerers (count turtles with [adoption_state >= 1])]
+  if (count turtles with [adoption_state = 2]) > 1 [set cost_per_adopter (current_cost / count turtles with [adoption_state = 2])]
+  if (count turtles with [adoption_state >= 1]) > 1 [set cost_per_considerer (current_cost / count turtles with [adoption_state >= 1])]
 
   calc_simulation_variables ; uncomment if values are needed for analysis
 
@@ -952,9 +973,13 @@ to check_adoption
       set final_probability (final_probability + (calc_risk_aversion_influence_on_decision self * (base_adoption_probability / 100))) ;; influence of risk aversion
       set final_probability (final_probability + (calc_adopter_friends_influence_on_decision self * (base_adoption_probability / 100))) ;; influence of adoption rate of friends
       set final_probability (final_probability + (calc_attitude_influence_on_decision self * (base_adoption_probability / 100))) ;; influence of attitude towards innovation
+      set final_probability (final_probability + calc_intervention_state_influence_on_decision self)
 
       ;; truncate negative or >100% values
       set final_probability (truncate_value final_probability 1 0)
+
+      ;; reset intervention state to 0. Positive effect of intervention on adoption decision wears off after a decision was taken for the first time
+      set intervention_state 0
 
 
       ;; check if agent wants to adopt
@@ -1017,6 +1042,16 @@ to-report calc_attitude_influence_on_decision [agent]
   report result
 end
 
+to-report calc_intervention_state_influence_on_decision [agent]
+  let state [intervention_state] of agent
+  let influence (ifelse-value
+    state = 0 [ 0 ]
+    state = 1 [ 30 ]
+    state = 2 [ 35 ]
+    state = 3 [ 80 ]
+    state = 4 [ 88 ])
+  report influence / 100
+end
 
 
 ;; ----------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -1025,18 +1060,34 @@ end
 ;; interventions
 
 to direct_village_intervention
-  contact_farmers direct_ad_nr_of_villages percentage_of_villagers_addressed / 100 direct_ad_influence
+  (ifelse direct_ad_type = "Direct Ad" [direct_ad]
+          direct_ad_type = "Direct Ad + Discount" [direct_ad_with_discount]
+          direct_ad_type = "Direct Ad + Delayed Payment" [direct_ad_with_delayed_payment])
 end
 
-to direct_village_intervention_discount
-  contact_farmers direct_ad_nr_of_villages percentage_of_villagers_addressed / 100 direct_ad_discount_influence
+to direct_ad
+  let intervention_cost calc_intervention_cost 1 nr_of_contacted_villages
+  let b_in_budget check_budget intervention_cost
+  if b_in_budget [update_current_cost intervention_cost
+                  contact_farmers nr_of_contacted_villages percentage_of_villagers_addressed / 100 direct_ad_influence 1]
 end
 
-to direct_village_intervention_delayed_payment
-  contact_farmers direct_ad_nr_of_villages percentage_of_villagers_addressed / 100 direct_ad_delayed_payment_influence
+to direct_ad_with_discount
+  let intervention_cost calc_intervention_cost 2 nr_of_contacted_villages
+  let b_in_budget check_budget intervention_cost
+  if b_in_budget [update_current_cost intervention_cost
+                  contact_farmers nr_of_contacted_villages percentage_of_villagers_addressed / 100 direct_ad_influence 2]
 end
 
-to contact_farmers [ nr_of_villages_selected percentage_of_farmers influence]
+to direct_ad_with_delayed_payment
+  let intervention_cost calc_intervention_cost 3 nr_of_contacted_villages
+  let b_in_budget check_budget intervention_cost
+  if b_in_budget [
+    update_current_cost intervention_cost
+    contact_farmers nr_of_contacted_villages percentage_of_villagers_addressed / 100 direct_ad_influence 3]
+end
+
+to contact_farmers [ nr_of_villages_selected percentage_of_farmers influence intervention_type]
   let chosen_village_ids (at-most-n-of-list nr_of_villages_selected all_village_ids)
 ;  let chosen_village_ids [ 1 ]
 
@@ -1050,6 +1101,7 @@ to contact_farmers [ nr_of_villages_selected percentage_of_farmers influence]
     if any? village_farmers [
       ask village_farmers [
       interact research_team_agent influence false self 0 true true false
+      set intervention_state intervention_type
       ]
     ]
   ]
@@ -1057,15 +1109,48 @@ end
 
 
 to train_chiefs
-  let chosen_chiefs at-most-n-of train_chiefs_nr chiefs
+  let intervention_cost calc_intervention_cost 4 ((train_chiefs_nr / 100) * nr_of_villages)
+  let b_in_budget check_budget intervention_cost
+  if b_in_budget [
+    update_current_cost intervention_cost
 
-  if (any? chosen_chiefs) [
-
-    ask chosen_chiefs [
-      interact research_team_agent train_chiefs_influence false self 0 true true false
+    let chosen_chiefs at-most-n-of ((train_chiefs_nr / 100) * nr_of_villages) chiefs
+    if (any? chosen_chiefs) [
+      ask chosen_chiefs [
+        interact research_team_agent train_chiefs_influence false self 0 true true false
+        set intervention_state 4
+      ]
     ]
   ]
 end
+
+to-report calc_intervention_cost [intervention_type x] ;; x = direct_ad_nr_of_villages/train_chiefs_nr
+  let fixed_cost (ifelse-value
+    intervention_type = 1 [1500]
+    intervention_type = 2 [1500]
+    intervention_type = 3 [1500]
+    intervention_type = 4 [500])
+
+  let variable_cost (ifelse-value
+    intervention_type = 1 [30]
+    intervention_type = 2 [50]
+    intervention_type = 3 [70]
+    intervention_type = 4 [10])
+
+  let intervention_cost (fixed_cost + variable_cost * x)
+  report intervention_cost
+end
+
+to-report check_budget [intervention_cost]
+  ifelse (current_cost + intervention_cost) <= max_budget
+  [report true]
+  [report false]
+end
+
+to update_current_cost [intervention_cost]
+  set current_cost (current_cost + intervention_cost)
+end
+
 
 to check_for_interventions
   intervention_strategy_sample
@@ -1074,12 +1159,11 @@ end
 
 
 to intervention_strategy_sample
-  if direct_ad_frequency > 0 and ticks mod direct_ad_frequency = 0 [
-    direct_village_intervention
-  ]
-  if train_chiefs_frequency > 0 and ticks mod train_chiefs_frequency = 0 [
-    train_chiefs
-  ]
+  if direct_ad_frequency > 0 and ticks mod (direct_ad_frequency + 1) = 0 [     ;; +1 because if frequency is set to 365 (once a year) there is a second intervention happening on day 365 which increases costs without positive effects
+    direct_village_intervention]
+
+  if train_chiefs_frequency > 0 and ticks mod (train_chiefs_frequency + 1) = 0 [
+    train_chiefs]
 end
 
 ;; ----------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -1263,10 +1347,10 @@ to reset_simulation
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
-353
-11
-1438
-1097
+352
+10
+1437
+1096
 -1
 -1
 4.191
@@ -1439,7 +1523,7 @@ avg_chief_farmer_meeting_frequency
 avg_chief_farmer_meeting_frequency
 1
 50
-7.0
+20.0
 1
 1
 days
@@ -1473,20 +1557,20 @@ Setup Parameter
 1
 
 TEXTBOX
-123
-427
-273
-446
+143
+451
+293
+470
 Interventions
 15
 0.0
 1
 
 BUTTON
-21
-476
-110
-509
+29
+892
+118
+925
 Direct Ad
 direct_village_intervention
 NIL
@@ -1511,10 +1595,10 @@ is_visible_update_activated
 -1000
 
 BUTTON
-16
-664
-106
-697
+29
+974
+119
+1007
 Train Chiefs
 train_chiefs
 NIL
@@ -1577,7 +1661,7 @@ INPUTBOX
 336
 108
 run_until_day_x
--1.0
+360.0
 1
 0
 Number
@@ -1600,56 +1684,56 @@ HORIZONTAL
 MONITOR
 23
 337
-123
+92
 382
-Nr. of Adopters
+Adopters
 count turtles with [adoption_state = 2]
 17
 1
 11
 
 MONITOR
-248
-336
-339
-381
-Total Nr. of Farmers
+259
+337
+338
+382
+Total Farmers
 count turtles - 2
 0
 1
 11
 
 MONITOR
-134
-337
-239
-382
-Aware Farmers
+23
+390
+92
+435
+Considerers
 count turtles with [adoption_state = 1]
 17
 1
 11
 
 SLIDER
-17
-602
-225
-635
+31
+754
+331
+787
 percentage_of_villagers_addressed
 percentage_of_villagers_addressed
 0.0
 100
-53.0
+50.0
 1
 1
-%
+% of villagers
 HORIZONTAL
 
 SLIDER
-18
-557
-222
-590
+31
+710
+331
+743
 direct_ad_nr_of_villages
 direct_ad_nr_of_villages
 0
@@ -1657,22 +1741,22 @@ direct_ad_nr_of_villages
 50.0
 1
 1
-NIL
+% of villages
 HORIZONTAL
 
 SLIDER
-125
-663
-335
-696
+32
+796
+332
+829
 train_chiefs_nr
 train_chiefs_nr
 0
 100
-80.0
+50.0
 1
 1
-NIL
+% of chiefs
 HORIZONTAL
 
 TEXTBOX
@@ -1696,12 +1780,12 @@ UI Settings
 1
 
 BUTTON
-116
-476
-254
-509
+124
+892
+262
+925
 Direct Ad + Discount
-direct_village_intervention_discount
+direct_ad_with_discount
 NIL
 1
 T
@@ -1713,12 +1797,12 @@ NIL
 1
 
 BUTTON
-20
-515
-214
-548
+28
+931
+222
+964
 Direct Ad + Delayed Payment
-direct_village_intervention_delayed_payment
+direct_ad_with_delayed_payment
 NIL
 1
 T
@@ -1732,7 +1816,7 @@ NIL
 SLIDER
 1480
 182
-1689
+1729
 215
 nr_of_neighborhoods
 nr_of_neighborhoods
@@ -1747,17 +1831,111 @@ HORIZONTAL
 SLIDER
 1478
 230
-1803
+1730
 263
 percentage_of_farmers_in_farmgroup
 percentage_of_farmers_in_farmgroup
 0
 100
-100.0
+50.0
 1
 1
 NIL
 HORIZONTAL
+
+SLIDER
+27
+537
+330
+570
+direct_ad_frequency
+direct_ad_frequency
+0
+365
+365.0
+1
+1
+days
+HORIZONTAL
+
+MONITOR
+32
+642
+189
+687
+Current Intervention Cost
+current_cost
+17
+1
+11
+
+INPUTBOX
+222
+634
+307
+694
+max_budget
+10000.0
+1
+0
+Number
+
+SLIDER
+28
+582
+331
+615
+train_chiefs_frequency
+train_chiefs_frequency
+0
+365
+0.0
+1
+1
+days
+HORIZONTAL
+
+CHOOSER
+26
+480
+238
+525
+direct_ad_type
+direct_ad_type
+"Direct Ad" "Direct Ad + Discount" "Direct Ad + Delayed Payment"
+0
+
+MONITOR
+104
+337
+213
+382
+Cost per Adopter
+cost_per_adopter
+2
+1
+11
+
+MONITOR
+104
+390
+214
+435
+Cost per Considerer
+cost_per_considerer
+2
+1
+11
+
+TEXTBOX
+109
+850
+259
+869
+Manual Interventions
+15
+0.0
+1
 
 @#$#@#$#@
 ## Agent-based Model of Innovation Diffusion among Smallholder Farmer Households
@@ -2210,6 +2388,243 @@ NetLogo 6.2.2
     </enumeratedValueSet>
     <enumeratedValueSet variable="train_chiefs_frequency">
       <value value="0"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="Intervention State" repetitions="20" runMetricsEveryStep="false">
+    <setup>setup
+direct_village_intervention</setup>
+    <go>go</go>
+    <timeLimit steps="365"/>
+    <metric>count turtles with [adoption_state = 1]</metric>
+    <metric>count turtles with [adoption_state = 2]</metric>
+    <enumeratedValueSet variable="avg_intra_village_interaction_frequency">
+      <value value="4"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="avg_chief_farmer_meeting_frequency">
+      <value value="20"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="avg_nr_of_farmers_per_village">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="avg_mention_percentage">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="check_finished_condition">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="percentage_of_villagers_addressed">
+      <value value="50"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="run_until_day_x">
+      <value value="365"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="percentage_of_farmers_in_farmgroup">
+      <value value="50"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="train_chiefs_nr">
+      <value value="80"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="is_visible_update_activated">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="nr_default_friends_inter_village">
+      <value value="5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="base_adoption_probability">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="nr_of_neighborhoods">
+      <value value="100"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="percentage_negative_WoM">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="avg_inter_village_interaction_frequency">
+      <value value="5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="direct_ad_nr_of_villages">
+      <value value="50"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="nr_of_villages">
+      <value value="500"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="Intervention State2" repetitions="20" runMetricsEveryStep="false">
+    <setup>setup
+direct_village_intervention_discount</setup>
+    <go>go</go>
+    <timeLimit steps="365"/>
+    <metric>count turtles with [adoption_state = 1]</metric>
+    <metric>count turtles with [adoption_state = 2]</metric>
+    <enumeratedValueSet variable="avg_intra_village_interaction_frequency">
+      <value value="4"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="avg_chief_farmer_meeting_frequency">
+      <value value="20"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="avg_nr_of_farmers_per_village">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="avg_mention_percentage">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="check_finished_condition">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="percentage_of_villagers_addressed">
+      <value value="50"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="run_until_day_x">
+      <value value="365"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="percentage_of_farmers_in_farmgroup">
+      <value value="50"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="train_chiefs_nr">
+      <value value="80"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="is_visible_update_activated">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="nr_default_friends_inter_village">
+      <value value="5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="base_adoption_probability">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="nr_of_neighborhoods">
+      <value value="100"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="percentage_negative_WoM">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="avg_inter_village_interaction_frequency">
+      <value value="5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="direct_ad_nr_of_villages">
+      <value value="50"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="nr_of_villages">
+      <value value="500"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="Intervention State3" repetitions="20" runMetricsEveryStep="false">
+    <setup>setup
+direct_village_intervention_delayed_payment</setup>
+    <go>go</go>
+    <timeLimit steps="365"/>
+    <metric>count turtles with [adoption_state = 1]</metric>
+    <metric>count turtles with [adoption_state = 2]</metric>
+    <enumeratedValueSet variable="avg_intra_village_interaction_frequency">
+      <value value="4"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="avg_chief_farmer_meeting_frequency">
+      <value value="20"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="avg_nr_of_farmers_per_village">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="avg_mention_percentage">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="check_finished_condition">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="percentage_of_villagers_addressed">
+      <value value="50"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="run_until_day_x">
+      <value value="365"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="percentage_of_farmers_in_farmgroup">
+      <value value="50"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="train_chiefs_nr">
+      <value value="80"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="is_visible_update_activated">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="nr_default_friends_inter_village">
+      <value value="5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="base_adoption_probability">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="nr_of_neighborhoods">
+      <value value="100"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="percentage_negative_WoM">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="avg_inter_village_interaction_frequency">
+      <value value="5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="direct_ad_nr_of_villages">
+      <value value="50"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="nr_of_villages">
+      <value value="500"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="Budget Test" repetitions="10" runMetricsEveryStep="false">
+    <setup>setup
+direct_village_intervention</setup>
+    <go>go</go>
+    <timeLimit steps="365"/>
+    <metric>count turtles with [adoption_state = 1]</metric>
+    <metric>count turtles with [adoption_state = 2]</metric>
+    <metric>budget</metric>
+    <enumeratedValueSet variable="avg_intra_village_interaction_frequency">
+      <value value="4"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="avg_chief_farmer_meeting_frequency">
+      <value value="20"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="avg_nr_of_farmers_per_village">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="avg_mention_percentage">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="check_finished_condition">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="percentage_of_villagers_addressed">
+      <value value="50"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="run_until_day_x">
+      <value value="365"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="percentage_of_farmers_in_farmgroup">
+      <value value="50"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="train_chiefs_nr">
+      <value value="80"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="is_visible_update_activated">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="nr_default_friends_inter_village">
+      <value value="5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="base_adoption_probability">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="nr_of_neighborhoods">
+      <value value="100"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="percentage_negative_WoM">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="avg_inter_village_interaction_frequency">
+      <value value="5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="direct_ad_nr_of_villages">
+      <value value="50"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="nr_of_villages">
+      <value value="500"/>
     </enumeratedValueSet>
   </experiment>
 </experiments>
