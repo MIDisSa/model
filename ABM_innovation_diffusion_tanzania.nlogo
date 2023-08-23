@@ -123,7 +123,7 @@ turtles-own [
   ;; adoption variable
   risk_aversion ;; 1=risk-seeking - 5=risk-averse
   adoption_state ;; 0=not aware of innovation, 1=consideration, 2=adopter
-  intervention_state ;; 0=no intervention, 1=direct ad, 2=ad + discount, 3=ad + delayed payment, 4=trained chief
+  intervention_state ;; 0=no intervention, 1=direct ad, 2=ad + discount, 3=ad + delayed payment, 4=ad + delayed payment + discount, 5=trained chief
   next_adoption_decision_tick_nr ;; states the tick nr of this agent when he decides about adopting again
   innovation_adoption_attitude ;; defines the attitude of the agent towards the innovation (can be positive or negative; declines over time by attitude_decrease_per_tick)
 
@@ -1046,10 +1046,11 @@ to-report calc_intervention_state_influence_on_decision [agent]
   let state [intervention_state] of agent
   let influence (ifelse-value
     state = 0 [ 0 ]
-    state = 1 [ 30 ]
+    state = 1 [ 32 ]
     state = 2 [ 35 ]
-    state = 3 [ 80 ]
-    state = 4 [ 88 ])
+    state = 3 [ 76 ]
+    state = 4 [ 72 ]
+    state = 5 [ 88 ])
   report influence / 100
 end
 
@@ -1062,7 +1063,8 @@ end
 to direct_village_intervention
   (ifelse direct_ad_type = "Direct Ad" [direct_ad]
           direct_ad_type = "Direct Ad + Discount" [direct_ad_with_discount]
-          direct_ad_type = "Direct Ad + Delayed Payment" [direct_ad_with_delayed_payment])
+          direct_ad_type = "Direct Ad + Delayed Payment" [direct_ad_with_delayed_payment]
+          direct_ad_type = "Direct Ad + Delayed P. + Discount" [direct_ad_with_delay_and_discount])
 end
 
 to direct_ad
@@ -1087,6 +1089,14 @@ to direct_ad_with_delayed_payment
     contact_farmers nr_of_contacted_villages percentage_of_villagers_addressed / 100 direct_ad_influence 3]
 end
 
+to direct_ad_with_delay_and_discount
+  let intervention_cost calc_intervention_cost 4 nr_of_contacted_villages
+  let b_in_budget check_budget intervention_cost
+  if b_in_budget [
+    update_current_cost intervention_cost
+    contact_farmers nr_of_contacted_villages percentage_of_villagers_addressed / 100 direct_ad_influence 4]
+end
+
 to contact_farmers [ nr_of_villages_selected percentage_of_farmers influence intervention_type]
   let chosen_village_ids (at-most-n-of-list nr_of_villages_selected all_village_ids)
 ;  let chosen_village_ids [ 1 ]
@@ -1109,7 +1119,7 @@ end
 
 
 to train_chiefs
-  let intervention_cost calc_intervention_cost 4 ((train_chiefs_nr / 100) * nr_of_villages)
+  let intervention_cost calc_intervention_cost 5 ((train_chiefs_nr / 100) * nr_of_villages)
   let b_in_budget check_budget intervention_cost
   if b_in_budget [
     update_current_cost intervention_cost
@@ -1118,7 +1128,7 @@ to train_chiefs
     if (any? chosen_chiefs) [
       ask chosen_chiefs [
         interact research_team_agent train_chiefs_influence false self 0 true true false
-        set intervention_state 4
+        set intervention_state 5
       ]
     ]
   ]
@@ -1129,13 +1139,15 @@ to-report calc_intervention_cost [intervention_type x] ;; x = direct_ad_nr_of_vi
     intervention_type = 1 [1500]
     intervention_type = 2 [1500]
     intervention_type = 3 [1500]
-    intervention_type = 4 [500])
+    intervention_type = 4 [1500]
+    intervention_type = 5 [500])
 
   let variable_cost (ifelse-value
     intervention_type = 1 [30]
     intervention_type = 2 [50]
     intervention_type = 3 [70]
-    intervention_type = 4 [10])
+    intervention_type = 4 [75]
+    intervention_type = 5 [10])
 
   let intervention_cost (fixed_cost + variable_cost * x)
   report intervention_cost
@@ -1898,11 +1910,11 @@ HORIZONTAL
 CHOOSER
 26
 480
-238
+265
 525
 direct_ad_type
 direct_ad_type
-"Direct Ad" "Direct Ad + Discount" "Direct Ad + Delayed Payment"
+"Direct Ad" "Direct Ad + Discount" "Direct Ad + Delayed Payment" "Direct Ad + Delayed P. + Discount"
 0
 
 MONITOR
