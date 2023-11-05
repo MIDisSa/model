@@ -719,7 +719,7 @@ to chief-farmer-meeting-interaction
 
       ;; calculate if chief mentions the innovation in current meeting
       let mention_topic_prop (calc_mention_topic_probability self average_farmer_dummy false)
-      set mention_topic_prop (mention_topic_prop * (farmgroup_meeting_mention_probability / avg_mention_percentage )) ;; multply result by ratio between probabilities
+      set mention_topic_prop (mention_topic_prop * (farmgroup_meeting_mention_probability / avg_intra_mention_percentage )) ;; multply result by ratio between probabilities
 
       let mention_innovation choose_boolean_with_probability mention_topic_prop
 
@@ -812,10 +812,18 @@ to-report calc_mention_topic_probability [ participant1 participant2 bforceMenti
   ;; calculate influence of adoption state
   let adopter_interaction_influence (calc_adoption_state_influence_on_mention participant1 participant2)
 
+
+
+  ;; checker whether inter- or intra-mention percentage should be used
+  let mention-percentage avg_inter_mention_percentage
+  if [ref_village_id] of participant1 = [ref_village_id] of participant2 [
+    set mention-percentage avg_intra_mention_percentage
+  ]
+
   ;; calc final interaction probability
-  let final_interaction_probability (avg_mention_percentage / 100)
-  set final_interaction_probability (final_interaction_probability + (prev_topic_interactions_influence * (avg_mention_percentage / 100))) ;; influence of previous interaction
-  set final_interaction_probability (final_interaction_probability + (adopter_interaction_influence * (avg_mention_percentage / 100))) ;; influence of adoption phase
+  let final_interaction_probability (mention-percentage / 100)
+  set final_interaction_probability (final_interaction_probability + (prev_topic_interactions_influence * (mention-percentage / 100))) ;; influence of previous interaction
+  set final_interaction_probability (final_interaction_probability + (adopter_interaction_influence * (mention-percentage / 100))) ;; influence of adoption phase
 
   ;; percentage between 0 and 1
   set final_interaction_probability truncate_value final_interaction_probability 1 0
@@ -1464,21 +1472,6 @@ nr_default_friends_inter_village
 NIL
 HORIZONTAL
 
-SLIDER
-1485
-335
-1738
-368
-avg_mention_percentage
-avg_mention_percentage
-0
-100
-1.0
-1
-1
-%
-HORIZONTAL
-
 BUTTON
 117
 43
@@ -1596,10 +1589,10 @@ NIL
 1
 
 SWITCH
-1485
-690
-1710
-723
+1492
+737
+1717
+770
 is_visible_update_activated
 is_visible_update_activated
 1
@@ -1624,10 +1617,10 @@ NIL
 1
 
 SWITCH
-1484
-728
-1711
-761
+1491
+775
+1718
+808
 check_finished_condition
 check_finished_condition
 1
@@ -1673,7 +1666,7 @@ INPUTBOX
 336
 108
 run_until_day_x
-360.0
+100.0
 1
 0
 Number
@@ -1782,10 +1775,10 @@ Simulation Parameter
 1
 
 TEXTBOX
-1488
-656
-1638
-675
+1495
+703
+1645
+722
 UI Settings
 15
 0.0
@@ -1948,6 +1941,36 @@ Manual Interventions
 15
 0.0
 1
+
+SLIDER
+1485
+612
+1764
+645
+avg_inter_mention_percentage
+avg_inter_mention_percentage
+0
+100
+1.7
+0.1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+1485
+654
+1764
+687
+avg_intra_mention_percentage
+avg_intra_mention_percentage
+0
+100
+2.1
+0.1
+1
+NIL
+HORIZONTAL
 
 @#$#@#$#@
 ## Agent-based Model of Innovation Diffusion among Smallholder Farmer Households
