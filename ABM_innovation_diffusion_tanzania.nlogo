@@ -1528,7 +1528,7 @@ avg_chief_farmer_meeting_frequency
 avg_chief_farmer_meeting_frequency
 1
 50
-20.0
+30.0
 1
 1
 days
@@ -1666,7 +1666,7 @@ INPUTBOX
 336
 108
 run_until_day_x
-100.0
+360.0
 1
 0
 Number
@@ -1880,7 +1880,7 @@ INPUTBOX
 307
 694
 max_budget
-10000.0
+100000.0
 1
 0
 Number
@@ -1894,7 +1894,7 @@ train_chiefs_frequency
 train_chiefs_frequency
 0
 365
-0.0
+180.0
 1
 1
 days
