@@ -45,12 +45,23 @@ globals [
   max_influence_risk_aversion_on_attitude           ;; defines the influence of the risk aversion on the attitude change during an interaction
   base_attitude_change                              ;; defines by what value the attitude is changed during an interaction
 
-  ;; Optimization restrictions
+  ;; Optimization parameters
   ;;max_budget                                      ;; defines maximum budget available. As soon as budget is exhausted interventions won't have any more effects
   current_cost                                      ;; keeps track of total cost of already conducted interventions
   adopters_and_considerers                          ;; total number of agents with adoption state 1 or 2
   cost_per_adopter                                  ;; avg. cost to acquire one adopter with the implemented strategy
   cost_per_considerer                               ;; avg. cost to acquire one considerer with the implemented strategy
+
+
+  fixed_costs_direct_ad
+  fixed_costs_train_chiefs
+  variable_costs_direct_ad
+  variable_costs_discount
+  variable_costs_delayed
+  variable_costs_delayed_discount
+  variable_costs_train_chiefs
+  nr_of_direct_ads                                  ;; counts how many times a direct ad has actually been conducted during an optimization considering the budget restriction
+  nr_of_chief_trainings                             ;; counts how many times a chief training has actually been conducted during an optimization considering the budget restriction
 
 
 
@@ -249,6 +260,14 @@ to init_parameters
   set cost_per_adopter 1
   set cost_per_considerer 1
   set nr_of_contacted_villages ((direct_ad_nr_of_villages / 100) * nr_of_villages)
+
+  set fixed_costs_direct_ad 6000
+  set fixed_costs_train_chiefs 5000
+  set variable_costs_direct_ad 400
+  set variable_costs_discount 500
+  set variable_costs_delayed 700
+  set variable_costs_delayed_discount 800
+  set variable_costs_train_chiefs 400
 end
 
 
@@ -1078,31 +1097,33 @@ end
 to direct_ad
   let intervention_cost calc_intervention_cost 1 nr_of_contacted_villages
   let b_in_budget check_budget intervention_cost
-  if b_in_budget [update_current_cost intervention_cost
+  if b_in_budget [set nr_of_direct_ads nr_of_direct_ads + 1
+                  update_current_cost intervention_cost
                   contact_farmers nr_of_contacted_villages percentage_of_villagers_addressed / 100 direct_ad_influence 1]
 end
 
 to direct_ad_with_discount
   let intervention_cost calc_intervention_cost 2 nr_of_contacted_villages
   let b_in_budget check_budget intervention_cost
-  if b_in_budget [update_current_cost intervention_cost
+  if b_in_budget [set nr_of_direct_ads nr_of_direct_ads + 1
+                  update_current_cost intervention_cost
                   contact_farmers nr_of_contacted_villages percentage_of_villagers_addressed / 100 direct_ad_influence 2]
 end
 
 to direct_ad_with_delayed_payment
   let intervention_cost calc_intervention_cost 3 nr_of_contacted_villages
   let b_in_budget check_budget intervention_cost
-  if b_in_budget [
-    update_current_cost intervention_cost
-    contact_farmers nr_of_contacted_villages percentage_of_villagers_addressed / 100 direct_ad_influence 3]
+  if b_in_budget [set nr_of_direct_ads nr_of_direct_ads + 1
+                  update_current_cost intervention_cost
+                  contact_farmers nr_of_contacted_villages percentage_of_villagers_addressed / 100 direct_ad_influence 3]
 end
 
 to direct_ad_with_delay_and_discount
   let intervention_cost calc_intervention_cost 4 nr_of_contacted_villages
   let b_in_budget check_budget intervention_cost
-  if b_in_budget [
-    update_current_cost intervention_cost
-    contact_farmers nr_of_contacted_villages percentage_of_villagers_addressed / 100 direct_ad_influence 4]
+  if b_in_budget [set nr_of_direct_ads nr_of_direct_ads + 1
+                  update_current_cost intervention_cost
+                  contact_farmers nr_of_contacted_villages percentage_of_villagers_addressed / 100 direct_ad_influence 4]
 end
 
 to contact_farmers [ nr_of_villages_selected percentage_of_farmers influence intervention_type]
@@ -1130,6 +1151,7 @@ to train_chiefs
   let intervention_cost calc_intervention_cost 5 ((train_chiefs_nr / 100) * nr_of_villages)
   let b_in_budget check_budget intervention_cost
   if b_in_budget [
+    set nr_of_chief_trainings nr_of_chief_trainings + 1
     update_current_cost intervention_cost
 
     let chosen_chiefs at-most-n-of ((train_chiefs_nr / 100) * nr_of_villages) chiefs
@@ -1144,18 +1166,18 @@ end
 
 to-report calc_intervention_cost [intervention_type x] ;; x = direct_ad_nr_of_villages/train_chiefs_nr
   let fixed_cost (ifelse-value
-    intervention_type = 1 [1500]
-    intervention_type = 2 [1500]
-    intervention_type = 3 [1500]
-    intervention_type = 4 [1500]
-    intervention_type = 5 [500])
+    intervention_type = 1 [fixed_costs_direct_ad]
+    intervention_type = 2 [fixed_costs_direct_ad]
+    intervention_type = 3 [fixed_costs_direct_ad]
+    intervention_type = 4 [fixed_costs_direct_ad]
+    intervention_type = 5 [fixed_costs_train_chiefs])
 
   let variable_cost (ifelse-value
-    intervention_type = 1 [30]
-    intervention_type = 2 [50]
-    intervention_type = 3 [70]
-    intervention_type = 4 [75]
-    intervention_type = 5 [10])
+    intervention_type = 1 [variable_costs_direct_ad]
+    intervention_type = 2 [variable_costs_discount]
+    intervention_type = 3 [variable_costs_delayed]
+    intervention_type = 4 [variable_costs_delayed_discount]
+    intervention_type = 5 [variable_costs_train_chiefs])
 
   let intervention_cost (fixed_cost + variable_cost * x)
   report intervention_cost
@@ -1326,6 +1348,10 @@ to reset
     set innovation_adoption_attitude 0
     set color white
     set next_adoption_decision_tick_nr 0
+
+    ;;optimization variables
+    set nr_of_direct_ads 0
+    set nr_of_chief_trainings 0
   ]
 
 
@@ -1601,9 +1627,9 @@ is_visible_update_activated
 
 BUTTON
 29
-974
+1005
 119
-1007
+1038
 Train Chiefs
 train_chiefs
 NIL
@@ -1940,6 +1966,40 @@ TEXTBOX
 Manual Interventions
 15
 0.0
+1
+
+BUTTON
+29
+968
+287
+1001
+Direct Ad + Delayed Payment + Discount
+direct_ad_with_delay_and_discount
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
+
+BUTTON
+29
+968
+287
+1001
+Direct Ad + Delayed Payment + Discount
+direct_ad_with_delay_and_discount
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
 1
 
 SLIDER
