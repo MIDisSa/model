@@ -1090,8 +1090,8 @@ end
 to direct_village_intervention
   (ifelse direct_ad_type = "Direct Ad" [direct_ad]
           direct_ad_type = "Direct Ad + Discount" [direct_ad_with_discount]
-          direct_ad_type = "Direct Ad + Delayed Payment" [direct_ad_with_delayed_payment]
-          direct_ad_type = "Direct Ad + Delayed P. + Discount" [direct_ad_with_delay_and_discount])
+          direct_ad_type = "Direct Ad + Deferred Payment" [direct_ad_with_delayed_payment]
+          direct_ad_type = "Direct Ad + Deferred P. + Discount" [direct_ad_with_delay_and_discount])
 end
 
 to direct_ad
@@ -1832,7 +1832,7 @@ BUTTON
 931
 222
 964
-Direct Ad + Delayed Payment
+Direct Ad + Deferred Payment
 direct_ad_with_delayed_payment
 NIL
 1
@@ -1933,7 +1933,7 @@ CHOOSER
 525
 direct_ad_type
 direct_ad_type
-"Direct Ad" "Direct Ad + Discount" "Direct Ad + Delayed Payment" "Direct Ad + Delayed P. + Discount"
+"Direct Ad" "Direct Ad + Discount" "Direct Ad + Deferred Payment" "Direct Ad + Deferred P. + Discount"
 0
 
 MONITOR
@@ -1973,7 +1973,7 @@ BUTTON
 968
 287
 1001
-Direct Ad + Delayed Payment + Discount
+Direct Ad + Deferred Payment + Discount
 direct_ad_with_delay_and_discount
 NIL
 1
@@ -1990,7 +1990,7 @@ BUTTON
 968
 287
 1001
-Direct Ad + Delayed Payment + Discount
+Direct Ad + Deferred Payment + Discount
 direct_ad_with_delay_and_discount
 NIL
 1
