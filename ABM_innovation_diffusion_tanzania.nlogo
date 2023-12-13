@@ -235,7 +235,7 @@ to init_parameters
 
 
   set direct_ad_influence 150 ;; in %
-  set train_chiefs_influence 200 ;; in %
+  set train_chiefs_influence 2 ;; in %
   set direct_ad_discount_influence 150 ;; in % ;; TODO: maybe different number?
   set direct_ad_delayed_payment_influence 150 ;; in % ;; TODO: maybe different number?
 
@@ -1157,7 +1157,7 @@ to train_chiefs
     let chosen_chiefs at-most-n-of ((train_chiefs_nr / 100) * nr_of_villages) chiefs
     if (any? chosen_chiefs) [
       ask chosen_chiefs [
-        interact research_team_agent train_chiefs_influence false self 0 true true false
+        interact research_team_agent (train_chiefs_influence * 100) false self 0 true true false
         set intervention_state 5
       ]
     ]
